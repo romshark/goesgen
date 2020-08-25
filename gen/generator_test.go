@@ -2,7 +2,6 @@ package gen_test
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"os/exec"
 	"path"
@@ -43,22 +42,6 @@ func TestGenerate(t *testing.T) {
 	)
 	r.NoError(err)
 	r.Equal(path.Join(root, "generated"), outPkgPath)
-
-	// DEBUG
-	// copyFile(
-	// 	fmt.Sprintf("/Volumes/ramdisk/generated/generated.go"),
-	// 	path.Join(root, "/generated/generated.go"),
-	// )
-	dp := path.Join("/Volumes/ramdisk/testgenroot/")
-	if err := exec.Command("rm", "-rf", dp).Run(); err != nil {
-		panic(fmt.Errorf("removing debug out dir: %w", err))
-	}
-	if err := os.MkdirAll(dp, 0777); err != nil {
-		panic(err)
-	}
-	if err := exec.Command("cp", "-r", root, dp).Run(); err != nil {
-		panic(fmt.Errorf("copying root path to debug out dir: %w", err))
-	}
 
 	// Check output files
 	AssumeFilesExist(t, root,
