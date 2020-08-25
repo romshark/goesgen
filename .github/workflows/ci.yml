@@ -56,10 +56,6 @@ jobs:
         COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: $(go env GOPATH)/bin/goveralls -coverprofile overalls.coverprofile -service=github -repotoken=$COVERALLS_TOKEN
 
-    # Codecov
-    - name: Codecov
-      run: go test -race -covermode atomic -coverprofile coverage.txt
-
     # LINT
 
     # Install golint
