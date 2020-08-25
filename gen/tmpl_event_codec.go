@@ -3,7 +3,7 @@ package gen
 const TmplEventCodec = `{{define "event_codec"}}
 /* EVENT CODEC */
 
-// EncodeEventJSON encodes one or mulitple events to UTF-8 text.
+// EncodeEventJSON encodes one or multiple events to UTF-8 text.
 // Multiple events are automatically encoded into a JSON array.
 func EncodeEventJSON(e ...Event) ([]byte, error) {
 	type E struct {
