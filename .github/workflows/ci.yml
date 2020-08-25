@@ -53,7 +53,7 @@ jobs:
     # Goveralls
     - name: goveralls
       env:
-        COVERALLS_TOKEN: ${{ secrets.COVERALLS_TOKEN }}
+        COVERALLS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: $(go env GOPATH)/bin/goveralls -coverprofile overalls.coverprofile -service=github -repotoken=$COVERALLS_TOKEN
 
     # Codecov
