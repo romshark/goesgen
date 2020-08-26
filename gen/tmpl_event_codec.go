@@ -50,7 +50,7 @@ func DecodeEventJSON(b []byte) (Event, error) {
 	}
 
 	switch v.TypeName {
-	{{range $e := $.Schema.Events}}
+	{{- range $e := $.Schema.Events}}
 	case "{{$e.Name}}":
 		var e Event{{$e.Name}}
 		if err := json.Unmarshal(v.Payload, &e); err != nil {
@@ -60,7 +60,7 @@ func DecodeEventJSON(b []byte) (Event, error) {
 			))
 		}
 		return e, nil
-	{{end}}
+	{{- end}}
 	}
 	return nil, UnknownEventTypeErr(fmt.Sprintf(
 		"unknown event type %s", v.TypeName,

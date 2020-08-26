@@ -5,12 +5,15 @@ const TmplEvents = `{{define "events"}}
 
 // Event represents either of:
 {{range $n, $e := $.Schema.Events}}//  {{$.EventType $n}}
-{{end}}type Event = interface{}
+{{end -}}
+type Event = interface{}
 
 {{range $n, $e := $.Schema.Events}}
+// {{$.EventType $n}} defines event {{$n}}
 type {{$.EventType $n}} struct {
-	{{range $p, $t := $e.Properties}} {{$.Capitalize $p}} src.{{$t.Name}} "json:\"{{$p}}\""
-	{{end}}
+	{{range $p, $t := $e.Properties -}}
+	{{$.Capitalize $p}} src.{{$t.Name}} "json:\"{{$p}}\""
+	{{end -}}
 }
 {{end}}
 
@@ -18,8 +21,9 @@ type {{$.EventType $n}} struct {
 // Returns "" if the given object is not a valid event.
 func GetEventTypeName(e Event) string {
 	switch e.(type) {
-	{{range $n := $.Schema.Events}} case {{$.EventType $n.Name}}: return "{{$n.Name}}"
-	{{end}}
+	{{- range $n := $.Schema.Events}}
+	case {{$.EventType $n.Name}}: return "{{$n.Name}}"
+	{{- end}}
 	}
 	return ""
 }

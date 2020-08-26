@@ -9,10 +9,9 @@ const TmplProjections = `{{define "projections"}}
 type {{$projType}}State string
 
 const (
-	{{range $sn, $s := $p.States}}
+	{{- range $sn, $s := $p.States}}
 	{{$.ProjectionStateConstant $projType $sn}} {{$projType}}State = "{{$sn}}"
-	
-	{{end}}
+	{{- end -}}
 )
 
 type {{$projType}} struct {

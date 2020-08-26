@@ -89,7 +89,8 @@ type Transaction = interface{}
 {{range $p := $s.Projections}}//  {{$p.Name}}{{end}}
 // therefore, {{$srvName}} subscribes to the following events:
 {{range $p := $s.Projections}}{{range $e, $t := $p.Transitions}}//  {{$e.Name}}
-{{end}}{{end}}type {{$srvType}} struct {
+{{end}}{{end -}}
+type {{$srvType}} struct {
 	eventlog EventLogger
 	logErr   Logger
 	impl     {{$srvType}}Impl
@@ -139,11 +140,23 @@ type {{$srvType}}Impl interface {
 	{{$.MethodName $mn}}(
 		context.Context,
 		Transaction,
-		{{if $m.Input}}src.{{$m.Input.Name}}, {{end}}
+		{{if $m.Input -}}
+		src.{{$m.Input.Name}},
+		{{- else -}}
+		// No input
+		{{- end}}
 	) (
-		{{if $m.Output}}src.{{$m.Output.Name}},{{end}}
-		{{if (not (eq $m.Type "readonly"))}}[]Event,{{end}}
-		error,
+		{{if $m.Output -}}
+		output src.{{$m.Output.Name}},
+		{{- else -}}
+		// No output
+		{{- end}}
+		{{if (not (eq $m.Type "readonly")) -}}
+		events []Event,
+		{{- else -}}
+		// No events
+		{{- end}}
+		err error,
 	)
 	{{end}}
 }
@@ -258,14 +271,14 @@ func (s *{{$srvType}}) sync(
 				return err
 			}
 			switch v := ev.(type) {
-			{{range $e := $s.Subscriptions}} case {{ $.EventType $e.Name }}:
+			{{- range $e := $s.Subscriptions}} case {{ $.EventType $e.Name }}:
 				if err := s.impl.Apply{{ $.EventType $e.Name }}(
 					ctx, trx, next, tm, v,
 				); err != nil {
 					return err
 				}
 				latestVersion = next
-			{{end}}
+			{{end -}}
 			}
 			return nil
 		},
@@ -281,13 +294,23 @@ func (s *{{$srvType}}) sync(
 {{range $mn, $m := $s.Methods}}
 func (s *{{$srvType}}) {{$mn}}(
 	ctx context.Context,
-	{{if $m.Input}}in src.{{$m.Input.Name}}, {{end}}
+	{{if $m.Input -}}
+	input src.{{$m.Input.Name}},
+	{{- else -}}
+	// No input
+	{{- end}}
 ) (
-	{{if $m.Output}}out src.{{$m.Output.Name}}, {{end}}
-	{{if (not (eq $m.Type "readonly"))}}
+	{{if $m.Output -}}
+	output src.{{$m.Output.Name}},
+	{{- else -}}
+	// No output
+	{{- end}}
+	{{if (not (eq $m.Type "readonly")) -}}
 	events []Event,
 	eventsPushTime time.Time,
-	{{end}}
+	{{- else -}}
+	// No events
+	{{- end}}
 	err error,
 ) {
 	{{- if eq $m.Type "transaction"}}
@@ -306,38 +329,57 @@ func (s *{{$srvType}}) {{$mn}}(
 	defer txn.Complete()
 	{{end}}
 
-	{{if $m.Output}}var outZero src.{{$m.Output.Name}}{{end}}
-	{{if (not (eq $m.Type "readonly"))}}var eventsJSON []byte{{end}}
+	{{if $m.Output -}}
+	var outZero src.{{$m.Output.Name}}
+	{{- end}}
+	{{if (not (eq $m.Type "readonly")) -}}
+	var eventsJSON []byte
+	{{- end}}
+
+	{{if (or $m.Output (not (eq $m.Type "readonly"))) -}}
 	defer func() {
 		if err != nil {
-			{{if $m.Output}}out = outZero{{end}}
-			{{if (not (eq $m.Type "readonly"))}}
+			{{if $m.Output -}}
+			output = outZero
+			{{- else -}}
+			// No output to reset
+			{{- end}}
+			{{if (not (eq $m.Type "readonly")) -}}
 			events = nil
 			eventsJSON = nil
 			eventsPushTime = time.Time{}
-			{{end}}
+			{{- else -}}
+			// No events to reset
+			{{- end}}
 		}
 	}()
+	{{- end}}
 
 	exec := func() (ok bool) {
-		{{if $m.Output}}out, {{end}}
-		{{if (not (eq $m.Type "readonly"))}}events, {{end}}
-		err = s.impl.{{$.MethodName $mn}}(
-			ctx,
-			txn,
-			{{if $m.Input}}in,{{end}}
+		{{if $m.Output -}}
+		output,
+		{{- end -}}
+		{{if (not (eq $m.Type "readonly")) -}}
+		events,
+		{{- end -}}
+		err = s.impl.{{$.MethodName $mn}}(ctx, txn,
+			{{- if $m.Input -}}
+			input,
+			{{- end -}}
 		)
 		if err != nil {
 			return false
 		}
-		{{if (not (eq $m.Type "readonly"))}}for i, e := range events {
+		{{if (not (eq $m.Type "readonly")) -}}
+		for i, e := range events {
 			if err = CheckEventType(e); err != nil {
 				err = fmt.Errorf("checking returned event (%d): %w", i, err)
 				return false
 			}
 			switch e.(type) {
-			{{range $e := $m.Emits}}case {{ $.EventType $e.Name}}:
-			{{end}}
+			{{- range $e := $m.Emits -}}
+			case {{ $.EventType $e.Name}}:
+			{{end -}}
 			default:
 				panic(fmt.Errorf(
 					"method {{$s.Name}}.{{$mn}} is not allowed to emit event %s",
@@ -348,16 +390,16 @@ func (s *{{$srvType}}) {{$mn}}(
 		if eventsJSON, err = EncodeEventJSON(events...); err != nil {
 			return false
 		}
-		{{end}}
+		{{- end}}
 		return true
 	}
 
-	{{if eq $m.Type "append"}}
+	{{if eq $m.Type "append" -}}
 	if !exec() {
 		return
 	}
 	_, _, eventsPushTime, err = s.eventlog.AppendJSON(ctx, eventsJSON)
-	{{else if eq $m.Type "transaction"}}
+	{{- else if eq $m.Type "transaction" -}}
 	var currentVersion EventlogVersion
 	currentVersion, err = s.ProjectionVersion(ctx)
 	if err != nil {
@@ -375,9 +417,9 @@ func (s *{{$srvType}}) {{$mn}}(
 		},
 		func() (EventlogVersion, error) { return s.sync(ctx, txn) },
 	)
-	{{else}}
+	{{- else}}
 	exec()
-	{{end}}
+	{{- end}}
 
 	return
 }

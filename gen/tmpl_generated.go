@@ -31,6 +31,8 @@ var defaultLogErr = &fallbackLog{os.Stderr}
 
 {{template "events" $}}
 {{template "event_codec" $}}
-{{if not $.Options.ExcludeProjections}}{{template "projections" $}}{{end}}
+{{if not $.Options.ExcludeProjections -}}
+{{template "projections" $}}
+{{- end}}
 {{template "services" $}}
 `
