@@ -179,6 +179,22 @@ func TestParse(t *testing.T) {
 			r.Equal(s, service.Schema)
 			r.Equal("S1", service.Name)
 
+			{ // services.S1.subscriptions
+				r.Len(service.Subscriptions, 3)
+
+				// services.S1.subscriptions.E1
+				r.Contains(service.Subscriptions, "E1")
+				r.Equal(s.Events["E1"], service.Subscriptions["E1"])
+
+				// services.S1.subscriptions.E2
+				r.Contains(service.Subscriptions, "E2")
+				r.Equal(s.Events["E2"], service.Subscriptions["E2"])
+
+				// services.S1.subscriptions.E3
+				r.Contains(service.Subscriptions, "E3")
+				r.Equal(s.Events["E3"], service.Subscriptions["E3"])
+			}
+
 			// services.S1.methods
 			r.Len(service.Methods, 5)
 
