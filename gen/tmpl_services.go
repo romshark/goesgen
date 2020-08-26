@@ -79,7 +79,7 @@ type NewTransactionReadWrite interface {
 
 // Transaction represents an arbitrary abstract transaction object
 // that's supposed to be used for queries and mutations only.
-// Transaction must not be commited or rolled back!
+// Transaction must not be committed or rolled back!
 type Transaction = interface{}
 
 {{range $srvName, $s := $.Schema.Services}}
@@ -99,7 +99,7 @@ type Transaction = interface{}
 type {{$srvType}}Impl interface {
 	// NewTransactionReadWrite creates a new exclusive read-write transaction.
 	// The returned transaction is passed to implementation methods
-	// and will eventually be either commited or rolled back respectively.
+	// and will eventually be either committed or rolled back respectively.
 	NewTransactionReadWrite() NewTransactionReadWrite
 
 	// NewTransactionReadOnly creates a new read-only transaction.
@@ -134,7 +134,7 @@ type {{$srvType}}Impl interface {
 	//
 	// WARNING: this method is read-only and must not mutate neither
 	// the state of the projection nor the projection version!
-	// The provided transaction must not be commited or rolled back
+	// The provided transaction must not be committed or rolled back
 	// and shall only be used for queries and mutations.
 	{{$.MethodName $mn}}(
 		context.Context,
