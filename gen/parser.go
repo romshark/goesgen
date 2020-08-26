@@ -62,12 +62,13 @@ type (
 		References     []interface{}
 	}
 	Projection struct {
-		Schema      *Schema
-		Name        ProjectionName
-		States      map[ProjectionState]struct{}
-		Properties  map[PropertyName]*Type
-		CreateOn    *Event
-		Transitions map[*Event][]*Transition
+		Schema       *Schema
+		Name         ProjectionName
+		States       map[ProjectionState]struct{}
+		InitialState ProjectionState
+		Properties   map[PropertyName]*Type
+		CreateOn     *Event
+		Transitions  map[*Event][]*Transition
 	}
 	Service struct {
 		Schema        *Schema
@@ -234,6 +235,7 @@ func parseProjectionStates(
 		}
 		p.States[s] = struct{}{}
 	}
+	p.InitialState = m.States[0]
 	return nil
 }
 
