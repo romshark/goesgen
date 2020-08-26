@@ -5,6 +5,58 @@ const TmplServices = `{{define "services"}}
 
 type EventlogVersion = string
 
+type EventLog struct {
+	IsOffsetOutOfBoundErr func(error) bool
+	Logger                EventLogger
+}
+
+type EventLogger interface {
+	// Listen starts listening for version update notifications
+	// calling onUpdate when one is received.
+	Listen(ctx context.Context, onUpdate func([]byte)) error
+
+	// Scan reads a limited number of events at the given offset version
+	// calling the onEvent callback for every received event.
+	Scan(
+		ctx context.Context,
+		version EventlogVersion,
+		limit uint,
+		onEvent func(
+			offset EventlogVersion,
+			tm time.Time,
+			payload []byte,
+			next EventlogVersion,
+		) error,
+	) error
+
+	// AppendJSON appends one or multiple new events
+	// in JSON format onto the log.
+	AppendJSON(
+		ctx context.Context,
+		payload []byte,
+	) (
+		offset EventlogVersion,
+		newVersion EventlogVersion,
+		tm time.Time,
+		err error,
+	)
+
+	// TryAppendJSON keeps executing transaction until either cancelled,
+	// succeeded (assumed and actual event log versions match)
+	// or failed due to an error.
+	TryAppendJSON(
+		ctx context.Context,
+		assumedVersion EventlogVersion,
+		transaction func() (events []byte, err error),
+		sync func() (EventlogVersion, error),
+	) (
+		offset EventlogVersion,
+		newVersion EventlogVersion,
+		tm time.Time,
+		err error,
+	)
+}
+
 {{range $n, $s := $.Schema.Services}}
 {{with $srvName := $.ServiceType $n}}
 
@@ -13,7 +65,7 @@ type EventlogVersion = string
 // therefore, {{$srvName}} subscribes to the following events:
 {{range $p := $s.Projections}}{{range $e, $t := $p.Transitions}}//  {{$e.Name}}
 {{end}}{{end}}type {{$srvName}} struct {
-	eventlog *client.Client
+	eventlog EventLog
 	logErr   Logger
 
 	lock              sync.Mutex
@@ -48,22 +100,25 @@ type {{$srvName}}Impl interface {
 
 func New{{$srvName}}(
 	implementation {{$srvName}}Impl,
-	eventlog *client.Client,
+	eventlog EventLog,
 	logErr Logger,
 ) *{{$srvName}} {
 	if implementation == nil {
 		panic("implementation is nil in New{{$srvName}}")
 	}
-	if eventlog == nil {
-		panic("eventlog is nil in New{{$srvName}}")
+	if eventlog.IsOffsetOutOfBoundErr == nil {
+		panic("eventlog.IsOffsetOutOfBoundErr is nil in New{{$srvName}}")
+	}
+	if eventlog.Logger == nil {
+		panic("eventlog.Logger is nil in New{{$srvName}}")
 	}
 	if logErr == nil {
 		logErr = defaultLogErr
 	}
 	return &{{$srvName}}{
-		impl:     implementation,
-		eventlog: eventlog,
-		logErr:   logErr,
+		impl:                  implementation,
+		eventlog:              eventlog,
+		logErr:                logErr,
 	}
 }
 
@@ -85,7 +140,7 @@ func (s *{{$srvName}}) initialize(
 // by subscribing to the eventlog's update notifier endpoint.
 // Listen will block until the provided context is canceled.
 func (s *{{$srvName}}) Listen(ctx context.Context) error {
-	return s.eventlog.Listen(ctx, func(version []byte) {
+	return s.eventlog.Logger.Listen(ctx, func(version []byte) {
 		s.lock.Lock()
 		defer s.lock.Unlock()
 
@@ -106,25 +161,30 @@ func (s *{{$srvName}}) Sync(
 		return "", err
 	}
 
-	if err := s.eventlog.Scan(
+	if err := s.eventlog.Logger.Scan(
 		ctx,
 		s.projectionVersion,
 		0,
-		func(e client.Event) error {
-			ev, err := DecodeEventJSON(e.Payload)
+		func(
+			offset EventlogVersion,
+			tm time.Time,
+			payload []byte,
+			next EventlogVersion,
+		) error {
+			ev, err := DecodeEventJSON(payload)
 			if err != nil {
 				return err
 			}
 			switch v := ev.(type) {
 			{{range $e := $s.Subscriptions}} case {{ $.EventType $e.Name }}:
-				s.impl.Apply{{ $.EventType $e.Name }}(e.Time, v)
+				s.impl.Apply{{ $.EventType $e.Name }}(tm, v)
 			{{end}}
-			s.projectionVersion = e.Next
+			s.projectionVersion = next
 			}
 			return nil
 		},
 	); err != nil {
-		if errors.Is(err, client.ErrOffsetOutOfBound) {
+		if s.eventlog.IsOffsetOutOfBoundErr(err) {
 			return s.projectionVersion, nil
 		}
 		return "", err
@@ -207,7 +267,7 @@ func (s *{{$srvName}}) {{$mn}}(
 	if !exec() {
 		return
 	}
-	_, _, eventsPushTime, err = s.eventlog.AppendJSON(ctx, eventsJSON)
+	_, _, eventsPushTime, err = s.eventlog.Logger.AppendJSON(ctx, eventsJSON)
 	{{else if eq $m.Type "transaction"}}
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -216,7 +276,7 @@ func (s *{{$srvName}}) {{$mn}}(
 		return
 	}
 
-	_, _, eventsPushTime, err = s.eventlog.TryAppendJSON(
+	_, _, eventsPushTime, err = s.eventlog.Logger.TryAppendJSON(
 		ctx,
 		s.projectionVersion,
 		func() ([]byte, error) {
@@ -225,7 +285,7 @@ func (s *{{$srvName}}) {{$mn}}(
 			}
 			return eventsJSON, nil
 		},
-		func() (string, error) { return s.Sync(ctx) },
+		func() (EventlogVersion, error) { return s.Sync(ctx) },
 	)
 	{{else}}
 	exec()

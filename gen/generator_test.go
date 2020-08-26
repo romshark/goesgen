@@ -21,7 +21,6 @@ func TestGenerate(t *testing.T) {
 		"main.go":          ValidSchemaMainGO,
 		"domain/domain.go": ValidSchemaDomainGO,
 		"go.mod":           ValidSchemaGoMOD,
-		"go.sum":           ValidSchemaGoSUM,
 	})
 
 	schema, err := gen.Parse(
@@ -47,7 +46,6 @@ func TestGenerate(t *testing.T) {
 	AssumeFilesExist(t, root,
 		"schema.yaml",
 		"go.mod",
-		"go.sum",
 		"main.go",
 		"domain/domain.go",
 		"generated/generated.go",

@@ -7,15 +7,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"reflect"
 	"sync"
 	"time"
-
-	"github.com/romshark/eventlog/client"
 
 	src "{{.Schema.SourceModule}}/{{.Schema.SourcePackage}}"
 )
