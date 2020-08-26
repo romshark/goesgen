@@ -4,21 +4,28 @@ const TmplProjections = `{{define "projections"}}
 /* PROJECTIONS */
 
 {{range $n, $p := $.Schema.Projections}}
-{{with $projName := $.ProjectionType $n}}
+{{with $projType := $.ProjectionType $n}}
 
-type {{$projName}}State string
+type {{$projType}}State string
 
 const (
 	{{range $sn, $s := $p.States}}
-	{{$projName}}State{{$sn}} {{$projName}}State = "{{$sn}}"
+	{{$.ProjectionStateConstant $projType $sn}} {{$projType}}State = "{{$sn}}"
+	
 	{{end}}
 )
 
-type {{$projName}} struct {
-	state {{$projName}}State
+type {{$projType}} struct {
+	state {{$projType}}State
 }
 
-func (p {{$projName}}) State() {{$projName}}State {
+func New{{$projType}}() {{$projType}} {
+	return {{$projType}}{
+		state: {{$.ProjectionStateConstant $projType $p.InitialState}},
+	}
+}
+
+func (p {{$projType}}) State() {{$projType}}State {
 	return p.state
 }
 

@@ -102,6 +102,12 @@ func (templateContext) ProjectionType(projectionName string) string {
 	return "Projection" + projectionName
 }
 
+func (templateContext) ProjectionStateConstant(
+	projectionType, stateName string,
+) string {
+	return projectionType + "State" + stateName
+}
+
 func (templateContext) ServiceType(projectionName string) string {
 	return "Service" + projectionName
 }
