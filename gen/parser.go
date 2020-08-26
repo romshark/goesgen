@@ -1,11 +1,13 @@
 package gen
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io/ioutil"
 	"os"
 	"strings"
 
@@ -36,11 +38,11 @@ type (
 		Emits  []EventName       `yaml:"emits"`
 	}
 	ModelEvent        map[PropertyName]TypeName
+	ModelTransition   = string
 	ServiceMethodName = string
 	ServiceMethodType = string
 	ServiceName       = string
 	EventName         = string
-	ModelTransition   = string
 	ProjectionName    = string
 	ProjectionState   = string
 	PropertyName      = string
@@ -49,6 +51,7 @@ type (
 
 type (
 	Schema struct {
+		Raw             string
 		Events          map[EventName]*Event
 		Projections     map[ProjectionName]*Projection
 		Services        map[ServiceName]*Service
@@ -726,7 +729,16 @@ func Parse(sourcePackagePath, schemaFilePath string) (*Schema, error) {
 			schemaFilePath, err,
 		)
 	}
-	d := yaml.NewDecoder(fl)
+
+	flc, err := ioutil.ReadAll(fl)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"reading schema file (%s) into memory: %q",
+			schemaFilePath, err,
+		)
+	}
+
+	d := yaml.NewDecoder(bytes.NewReader(flc))
 	d.KnownFields(true)
 	m := new(ModelSchema)
 	if err := d.Decode(m); err != nil {
@@ -737,6 +749,7 @@ func Parse(sourcePackagePath, schemaFilePath string) (*Schema, error) {
 	}
 
 	s := &Schema{
+		Raw:             string(flc),
 		ReferencedTypes: map[string]*Type{},
 	}
 	if err := parseSchema(s, m); err != nil {
