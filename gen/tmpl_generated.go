@@ -7,11 +7,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"reflect"
-	"sync"
 	"time"
 
 	src "{{.Schema.SourceModule}}/{{.Schema.SourcePackage}}"

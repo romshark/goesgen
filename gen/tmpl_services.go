@@ -5,18 +5,21 @@ const TmplServices = `{{define "services"}}
 
 type EventlogVersion = string
 
-type EventLog struct {
-	IsOffsetOutOfBoundErr func(error) bool
-	Logger                EventLogger
-}
-
+// EventLogger represents an abstract event logger
 type EventLogger interface {
-	// Listen starts listening for version update notifications
-	// calling onUpdate when one is received.
-	Listen(ctx context.Context, onUpdate func([]byte)) error
+	// IsOffsetOutOfBoundErr returns true if the given error
+	// is an offset-out-of-bound error
+	IsOffsetOutOfBoundErr(error) bool
+
+	// Begin returns the first offset version of the eventlog.
+	//
+	// WARNING: Begin is expected to be thread-safe.
+	Begin(context.Context) (string, error)
 
 	// Scan reads a limited number of events at the given offset version
 	// calling the onEvent callback for every received event.
+	//
+	// WARNING: Scan is expected to be thread-safe.
 	Scan(
 		ctx context.Context,
 		version EventlogVersion,
@@ -31,6 +34,8 @@ type EventLogger interface {
 
 	// AppendJSON appends one or multiple new events
 	// in JSON format onto the log.
+	//
+	// WARNING: AppendJSON is expected to be thread-safe.
 	AppendJSON(
 		ctx context.Context,
 		payload []byte,
@@ -44,6 +49,8 @@ type EventLogger interface {
 	// TryAppendJSON keeps executing transaction until either cancelled,
 	// succeeded (assumed and actual event log versions match)
 	// or failed due to an error.
+	//
+	// WARNING: TryAppendJSON is expected to be thread-safe.
 	TryAppendJSON(
 		ctx context.Context,
 		assumedVersion EventlogVersion,
@@ -57,38 +64,81 @@ type EventLogger interface {
 	)
 }
 
-{{range $n, $s := $.Schema.Services}}
-{{with $srvName := $.ServiceType $n}}
+// NewTransactionReadOnly represents an abstract
+// read-only (shared locking) transaction handler
+type NewTransactionReadOnly interface {
+	Complete()
+}
 
-// {{$srvName}} projects the following entities:
+// NewTransactionReadWrite represents an abstract
+// read-write (excluive locking) transaction handler
+type NewTransactionReadWrite interface {
+	Commit()
+	Rollback()
+}
+
+// Transaction represents an arbitrary abstract transaction object
+// that's supposed to be used for queries and mutations only.
+// Transaction must not be commited or rolled back!
+type Transaction = interface{}
+
+{{range $srvName, $s := $.Schema.Services}}
+{{with $srvType := $.ServiceType $srvName}}
+
+// {{$srvType}} projects the following entities:
 {{range $p := $s.Projections}}//  {{$p.Name}}{{end}}
 // therefore, {{$srvName}} subscribes to the following events:
 {{range $p := $s.Projections}}{{range $e, $t := $p.Transitions}}//  {{$e.Name}}
-{{end}}{{end}}type {{$srvName}} struct {
-	eventlog EventLog
+{{end}}{{end}}type {{$srvType}} struct {
+	eventlog EventLogger
 	logErr   Logger
-
-	lock              sync.Mutex
-	projectionVersion EventlogVersion
-	impl              {{$srvName}}Impl
+	impl     {{$srvType}}Impl
 }
 
-// {{$srvName}}Impl represents the implementation of the service {{$srvName}}
-type {{$srvName}}Impl interface {
+// {{$srvType}}Impl represents the implementation of the service {{$srvName}}
+type {{$srvType}}Impl interface {
+	// NewTransactionReadWrite creates a new exclusive read-write transaction.
+	// The returned transaction is passed to implementation methods
+	// and will eventually be either commited or rolled back respectively.
+	NewTransactionReadWrite() NewTransactionReadWrite
+
+	// NewTransactionReadOnly creates a new read-only transaction.
+	// The returned transaction is passed to implementation methods
+	// and will eventually be completed.
+	NewTransactionReadOnly() NewTransactionReadOnly
+
 	// ProjectionVersion returns the current projection version.
-	ProjectionVersion(context.Context) (EventlogVersion, error)
+	// Returns an empty string if the projection wasn't initialized yet.
+	// In case an empty string is returned the service will fallback
+	// to the begin offset version of the eventlog.
+	ProjectionVersion(
+		context.Context,
+		Transaction,
+	) (EventlogVersion, error)
 	
 	{{range $e := $s.Subscriptions}}
-	// Apply{{$e.Name}} applies event {{$e.Name}} to the projection.
-	Apply{{$.EventType $e.Name}} (time.Time, {{$.EventType $e.Name}})
+	// Apply{{$.EventType $e.Name}} applies event {{$e.Name}} to the projection.
+	// The projection must update its local projection version
+	// to the one that is provided.
+	Apply{{$.EventType $e.Name}} (
+		context.Context,
+		Transaction,
+		EventlogVersion,
+		time.Time,
+		{{$.EventType $e.Name}},
+	) error
 	{{end}}
 
 	{{range $mn, $m := $s.Methods}}
 	// {{$.MethodName $mn}} represents method {{$srvName}}.{{$mn}}
-	// 
-	// WARNING: this method shall not affect the state of the projection.
+	//
+	// WARNING: this method is read-only and must not mutate neither
+	// the state of the projection nor the projection version!
+	// The provided transaction must not be commited or rolled back
+	// and shall only be used for queries and mutations.
 	{{$.MethodName $mn}}(
 		context.Context,
+		Transaction,
 		{{if $m.Input}}src.{{$m.Input.Name}}, {{end}}
 	) (
 		{{if $m.Output}}src.{{$m.Output.Name}},{{end}}
@@ -98,73 +148,105 @@ type {{$srvName}}Impl interface {
 	{{end}}
 }
 
-func New{{$srvName}}(
-	implementation {{$srvName}}Impl,
-	eventlog EventLog,
+// New{{$srvType}} creates a new instance of the {{$srvName}} service.
+func New{{$srvType}}(
+	implementation {{$srvType}}Impl,
+	eventlog EventLogger,
 	logErr Logger,
-) *{{$srvName}} {
+) *{{$srvType}} {
 	if implementation == nil {
-		panic("implementation is nil in New{{$srvName}}")
+		panic("implementation is nil in New{{$srvType}}")
 	}
-	if eventlog.IsOffsetOutOfBoundErr == nil {
-		panic("eventlog.IsOffsetOutOfBoundErr is nil in New{{$srvName}}")
-	}
-	if eventlog.Logger == nil {
-		panic("eventlog.Logger is nil in New{{$srvName}}")
+	if eventlog == nil {
+		panic("eventlog is nil in New{{$srvType}}")
 	}
 	if logErr == nil {
 		logErr = defaultLogErr
 	}
-	return &{{$srvName}}{
+	return &{{$srvType}}{
 		impl:                  implementation,
 		eventlog:              eventlog,
 		logErr:                logErr,
 	}
 }
 
-func (s *{{$srvName}}) initialize(
+// ProjectionVersion returns the current projection version
+func (s *{{$srvType}}) ProjectionVersion(ctx context.Context) (
+	EventlogVersion,
+	error,
+) {
+	txn := s.impl.NewTransactionReadOnly()
+	defer txn.Complete()
+
+	return s.projectionVersion(ctx, txn)
+}
+
+func (s *{{$srvType}}) projectionVersion(
 	ctx context.Context,
-) error {
-	if s.projectionVersion != "" {
-		return nil
-	}
-	v, err := s.impl.ProjectionVersion(ctx)
+	txn Transaction,
+) (
+	EventlogVersion,
+	error,
+) {
+	v, err := s.impl.ProjectionVersion(ctx, txn)
 	if err != nil {
-		return err
+		return "", fmt.Errorf("reading projection version: %w", err)
 	}
-	s.projectionVersion = v
-	return nil
+	if v != "" {
+		return v, nil
+	}
+
+	// Fallback to the beginning of the eventlog
+	v, err = s.eventlog.Begin(ctx)
+	if err != nil {
+		return "", fmt.Errorf("reading begin offset version: %w", err)
+	}
+	return v, nil
 }
 
-// Listen starts listening for updates asynchronously
-// by subscribing to the eventlog's update notifier endpoint.
-// Listen will block until the provided context is canceled.
-func (s *{{$srvName}}) Listen(ctx context.Context) error {
-	return s.eventlog.Logger.Listen(ctx, func(version []byte) {
-		s.lock.Lock()
-		defer s.lock.Unlock()
-
-		if _, err := s.Sync(ctx); err != nil {
-			s.logErr.Printf("async syncing: %s", err)
-		}
-	})
-}
-
-// Sync synchronizes {{$srvName}} against the eventlog
-func (s *{{$srvName}}) Sync(
+// Sync synchronizes service {{$srvName}} against the eventlog.
+// Sync will scan events until it reaches the tip of the event log and
+// always return the latest version of the event log it managed to reach,
+// unless the returned error is not equal context.Canceled or
+// context.DeadlineExceeded and didn't pass isErrAcceptable (if not nil).
+func (s *{{$srvType}}) Sync(
 	ctx context.Context,
-) (v EventlogVersion, err error) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
+	isErrAcceptable func(error) bool,
+) (
+	latestVersion EventlogVersion,
+	err error,
+) {
+	txn := s.impl.NewTransactionReadWrite()
+	defer func() {
+		if err == nil ||
+			errors.Is(err, context.Canceled) ||
+			errors.Is(err, context.DeadlineExceeded) ||
+			(isErrAcceptable != nil && isErrAcceptable(err)) {
+			txn.Commit()
+		} else {
+			txn.Rollback()
+		}
+	}()
 
-	if err := s.initialize(ctx); err != nil {
+	return s.sync(ctx, txn)
+}
+
+func (s *{{$srvType}}) sync(
+	ctx context.Context,
+	trx Transaction,
+) (
+	latestVersion EventlogVersion,
+	err error,
+) {
+	initialVersion, err := s.projectionVersion(ctx, trx)
+	if err != nil {
 		return "", err
 	}
 
-	if err := s.eventlog.Logger.Scan(
+	if err := s.eventlog.Scan(
 		ctx,
-		s.projectionVersion,
-		0,
+		initialVersion,
+		0, // No limit
 		func(
 			offset EventlogVersion,
 			tm time.Time,
@@ -177,36 +259,27 @@ func (s *{{$srvName}}) Sync(
 			}
 			switch v := ev.(type) {
 			{{range $e := $s.Subscriptions}} case {{ $.EventType $e.Name }}:
-				s.impl.Apply{{ $.EventType $e.Name }}(tm, v)
+				if err := s.impl.Apply{{ $.EventType $e.Name }}(
+					ctx, trx, next, tm, v,
+				); err != nil {
+					return err
+				}
+				latestVersion = next
 			{{end}}
-			s.projectionVersion = next
 			}
 			return nil
 		},
 	); err != nil {
 		if s.eventlog.IsOffsetOutOfBoundErr(err) {
-			return s.projectionVersion, nil
+			return latestVersion, nil
 		}
 		return "", err
 	}
-	return s.projectionVersion, nil
-}
-
-// ProjectionVersion lazily initializes the service and
-// returns the current projection version of the service
-func (s *{{$srvName}}) ProjectionVersion(
-	ctx context.Context,
-) (EventlogVersion, error) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	if err := s.initialize(ctx); err != nil {
-		return "", err
-	}
-	return s.projectionVersion, nil
+	return latestVersion, nil
 }
 
 {{range $mn, $m := $s.Methods}}
-func (s *{{$srvName}}) {{$mn}}(
+func (s *{{$srvType}}) {{$mn}}(
 	ctx context.Context,
 	{{if $m.Input}}in src.{{$m.Input.Name}}, {{end}}
 ) (
@@ -217,6 +290,22 @@ func (s *{{$srvName}}) {{$mn}}(
 	{{end}}
 	err error,
 ) {
+	{{- if eq $m.Type "transaction"}}
+	txn := s.impl.NewTransactionReadWrite()
+	defer func() {
+		if err == nil ||
+			errors.Is(err, context.Canceled) ||
+			errors.Is(err, context.DeadlineExceeded) {
+			txn.Commit()
+		} else {
+			txn.Rollback()
+		}
+	}()
+	{{else}}
+	txn := s.impl.NewTransactionReadOnly()
+	defer txn.Complete()
+	{{end}}
+
 	{{if $m.Output}}var outZero src.{{$m.Output.Name}}{{end}}
 	{{if (not (eq $m.Type "readonly"))}}var eventsJSON []byte{{end}}
 	defer func() {
@@ -231,11 +320,11 @@ func (s *{{$srvName}}) {{$mn}}(
 	}()
 
 	exec := func() (ok bool) {
-
 		{{if $m.Output}}out, {{end}}
 		{{if (not (eq $m.Type "readonly"))}}events, {{end}}
 		err = s.impl.{{$.MethodName $mn}}(
 			ctx,
+			txn,
 			{{if $m.Input}}in,{{end}}
 		)
 		if err != nil {
@@ -267,25 +356,24 @@ func (s *{{$srvName}}) {{$mn}}(
 	if !exec() {
 		return
 	}
-	_, _, eventsPushTime, err = s.eventlog.Logger.AppendJSON(ctx, eventsJSON)
+	_, _, eventsPushTime, err = s.eventlog.AppendJSON(ctx, eventsJSON)
 	{{else if eq $m.Type "transaction"}}
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	if err = s.initialize(ctx); err != nil {
+	var currentVersion EventlogVersion
+	currentVersion, err = s.ProjectionVersion(ctx)
+	if err != nil {
 		return
 	}
 
-	_, _, eventsPushTime, err = s.eventlog.Logger.TryAppendJSON(
+	_, _, eventsPushTime, err = s.eventlog.TryAppendJSON(
 		ctx,
-		s.projectionVersion,
+		currentVersion,
 		func() ([]byte, error) {
 			if !exec() {
 				return nil, err
 			}
 			return eventsJSON, nil
 		},
-		func() (EventlogVersion, error) { return s.Sync(ctx) },
+		func() (EventlogVersion, error) { return s.sync(ctx, txn) },
 	)
 	{{else}}
 	exec()
