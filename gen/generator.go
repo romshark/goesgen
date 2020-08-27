@@ -30,13 +30,17 @@ func (g *Generator) Generate(
 	outputPath string,
 	options GeneratorOptions,
 ) (outPackagePath string, err error) {
-	outPackagePath = path.Join(outputPath, "generated")
+	if err := options.Prepare(); err != nil {
+		return "", fmt.Errorf("preparing options: %w", err)
+	}
+
+	outPackagePath = path.Join(outputPath, options.PackageName)
 	if err := os.MkdirAll(outPackagePath, 0777); err != nil {
 		return "", fmt.Errorf("setting up %s: %w", outPackagePath, err)
 	}
 	if err := writeGoFile(
 		nil,
-		path.Join(outPackagePath, "generated.go"),
+		path.Join(outPackagePath, options.PackageName+".go"),
 		g.tmpl,
 		templateContext{
 			Options: &options,
@@ -49,7 +53,23 @@ func (g *Generator) Generate(
 }
 
 type GeneratorOptions struct {
+	PackageName        string
 	ExcludeProjections bool
+}
+
+// Prepare validates the options and sets defaults for undefined values
+func (o *GeneratorOptions) Prepare() error {
+	if o.PackageName == "" {
+		o.PackageName = "generated"
+	} else {
+		for _, c := range o.PackageName {
+			if c < 'a' || c > 'z' {
+				return fmt.Errorf("illegal package name (%q)", o.PackageName)
+			}
+		}
+	}
+
+	return nil
 }
 
 func writeGoFile(

@@ -23,6 +23,11 @@ func main() {
 		"./",
 		"generated package output path",
 	)
+	flagPackageName := flag.String(
+		"pkgname",
+		"",
+		"generated package name",
+	)
 	flagExcludeProjections := flag.Bool(
 		"exclude-projections",
 		false,
@@ -37,6 +42,7 @@ func main() {
 
 	outPackagePath, err := gen.NewGenerator().Generate(
 		s, *flagOutputPath, gen.GeneratorOptions{
+			PackageName:        *flagPackageName,
 			ExcludeProjections: *flagExcludeProjections,
 		},
 	)

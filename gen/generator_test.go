@@ -13,6 +13,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGeneratorOptionsPrepareErrPackageName(t *testing.T) {
+	const (
+		expectError   = true
+		expectNoError = false
+	)
+	for _, t1 := range []struct {
+		expectError bool
+		name        string
+		packageName string
+	}{
+		{expectNoError, "okay", "okay"},
+		{expectError, "spaces", "contains spaces"},
+		{expectError, "underscore", "contains_underscores"},
+		{expectError, "illegal characters", "contains?#!-"},
+		{expectError, "camel case", "camelCase"},
+		{expectError, "non-ascii", "абвгд"},
+	} {
+		t.Run(t1.name, func(t *testing.T) {
+			o := &gen.GeneratorOptions{
+				PackageName: t1.packageName,
+			}
+			if t1.expectError {
+				require.Error(t, o.Prepare())
+			} else {
+				require.NoError(t, o.Prepare())
+			}
+		})
+	}
+}
+
 func TestGenerate(t *testing.T) {
 	r := require.New(t)
 
@@ -36,11 +66,12 @@ func TestGenerate(t *testing.T) {
 		schema,
 		root,
 		gen.GeneratorOptions{
+			PackageName:        "customname",
 			ExcludeProjections: false,
 		},
 	)
 	r.NoError(err)
-	r.Equal(path.Join(root, "generated"), outPkgPath)
+	r.Equal(path.Join(root, "customname"), outPkgPath)
 
 	// Check output files
 	AssumeFilesExist(t, root,
@@ -48,7 +79,7 @@ func TestGenerate(t *testing.T) {
 		"go.mod",
 		"main.go",
 		"domain/domain.go",
-		"generated/generated.go",
+		"customname/customname.go",
 	)
 
 	// Compile generated sources
