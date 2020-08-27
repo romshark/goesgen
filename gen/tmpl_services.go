@@ -64,15 +64,15 @@ type EventLogger interface {
 	)
 }
 
-// NewTransactionReadOnly represents an abstract
+// TransactionReadOnly represents an abstract
 // read-only (shared locking) transaction handler
-type NewTransactionReadOnly interface {
+type TransactionReadOnly interface {
 	Complete()
 }
 
-// NewTransactionReadWrite represents an abstract
+// TransactionReadWrite represents an abstract
 // read-write (excluive locking) transaction handler
-type NewTransactionReadWrite interface {
+type TransactionReadWrite interface {
 	Commit()
 	Rollback()
 }
@@ -103,12 +103,12 @@ type {{$srvType}}StoreHandler interface {
 	// NewTransactionReadWrite creates a new exclusive read-write transaction.
 	// The returned transaction is passed to implementation methods
 	// and will eventually be either committed or rolled back respectively.
-	NewTransactionReadWrite() NewTransactionReadWrite
+	NewTransactionReadWrite() TransactionReadWrite
 
 	// NewTransactionReadOnly creates a new read-only transaction.
 	// The returned transaction is passed to implementation methods
 	// and will eventually be completed.
-	NewTransactionReadOnly() NewTransactionReadOnly
+	NewTransactionReadOnly() TransactionReadOnly
 
 	// ProjectionVersion returns the current projection version.
 	// Returns an empty string if the projection wasn't initialized yet.
