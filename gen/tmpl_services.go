@@ -93,11 +93,13 @@ type Transaction = interface{}
 type {{$srvType}} struct {
 	eventlog EventLogger
 	logErr   Logger
-	impl     {{$srvType}}Impl
+	methods  {{$srvType}}MethodCaller
+	store    {{$srvType}}StoreHandler
 }
 
-// {{$srvType}}Impl represents the implementation of the service {{$srvName}}
-type {{$srvType}}Impl interface {
+// {{$srvType}}StoreHandler represents a store handler implementation
+// of the service {{$srvName}}
+type {{$srvType}}StoreHandler interface {
 	// NewTransactionReadWrite creates a new exclusive read-write transaction.
 	// The returned transaction is passed to implementation methods
 	// and will eventually be either committed or rolled back respectively.
@@ -129,15 +131,19 @@ type {{$srvType}}Impl interface {
 		{{$.EventType $e.Name}},
 	) error
 	{{end}}
+}
 
+// {{$srvType}}MethodCaller represents an implementation
+// of the service {{$srvName}}
+type {{$srvType}}MethodCaller interface {
 	{{range $mn, $m := $s.Methods}}
-	// {{$.MethodName $mn}} represents method {{$srvName}}.{{$mn}}
+	// {{$mn}} represents method {{$srvName}}.{{$mn}}
 	//
 	// WARNING: this method is read-only and must not mutate neither
 	// the state of the projection nor the projection version!
 	// The provided transaction must not be committed or rolled back
 	// and shall only be used for queries and mutations.
-	{{$.MethodName $mn}}(
+	{{$mn}}(
 		context.Context,
 		Transaction,
 		{{if $m.Input -}}
@@ -163,23 +169,28 @@ type {{$srvType}}Impl interface {
 
 // New{{$srvType}} creates a new instance of the {{$srvName}} service.
 func New{{$srvType}}(
-	implementation {{$srvType}}Impl,
-	eventlog EventLogger,
-	logErr Logger,
+	methodCaller {{$srvType}}MethodCaller,
+	storeHandler {{$srvType}}StoreHandler,
+	eventLogger EventLogger,
+	errorLogger Logger,
 ) *{{$srvType}} {
-	if implementation == nil {
-		panic("implementation is nil in New{{$srvType}}")
+	if methodCaller == nil {
+		panic("methodCaller is nil in New{{$srvType}}")
 	}
-	if eventlog == nil {
-		panic("eventlog is nil in New{{$srvType}}")
+	if storeHandler == nil {
+		panic("storeHandler is nil in New{{$srvType}}")
 	}
-	if logErr == nil {
-		logErr = defaultLogErr
+	if eventLogger == nil {
+		panic("eventLogger is nil in New{{$srvType}}")
+	}
+	if errorLogger == nil {
+		errorLogger = defaultLogErr
 	}
 	return &{{$srvType}}{
-		impl:                  implementation,
-		eventlog:              eventlog,
-		logErr:                logErr,
+		methods:  methodCaller,
+		store:    storeHandler,
+		eventlog: eventLogger,
+		logErr:   errorLogger,
 	}
 }
 
@@ -188,7 +199,7 @@ func (s *{{$srvType}}) ProjectionVersion(ctx context.Context) (
 	EventlogVersion,
 	error,
 ) {
-	txn := s.impl.NewTransactionReadOnly()
+	txn := s.store.NewTransactionReadOnly()
 	defer txn.Complete()
 
 	return s.projectionVersion(ctx, txn)
@@ -201,7 +212,7 @@ func (s *{{$srvType}}) projectionVersion(
 	EventlogVersion,
 	error,
 ) {
-	v, err := s.impl.ProjectionVersion(ctx, txn)
+	v, err := s.store.ProjectionVersion(ctx, txn)
 	if err != nil {
 		return "", fmt.Errorf("reading projection version: %w", err)
 	}
@@ -229,7 +240,7 @@ func (s *{{$srvType}}) Sync(
 	latestVersion EventlogVersion,
 	err error,
 ) {
-	txn := s.impl.NewTransactionReadWrite()
+	txn := s.store.NewTransactionReadWrite()
 	defer func() {
 		if err == nil ||
 			errors.Is(err, context.Canceled) ||
@@ -272,7 +283,7 @@ func (s *{{$srvType}}) sync(
 			}
 			switch v := ev.(type) {
 			{{- range $e := $s.Subscriptions}} case {{ $.EventType $e.Name }}:
-				if err := s.impl.Apply{{ $.EventType $e.Name }}(
+				if err := s.store.Apply{{ $.EventType $e.Name }}(
 					ctx, trx, next, tm, v,
 				); err != nil {
 					return err
@@ -314,7 +325,7 @@ func (s *{{$srvType}}) {{$mn}}(
 	err error,
 ) {
 	{{- if eq $m.Type "transaction"}}
-	txn := s.impl.NewTransactionReadWrite()
+	txn := s.store.NewTransactionReadWrite()
 	defer func() {
 		if err == nil ||
 			errors.Is(err, context.Canceled) ||
@@ -325,7 +336,7 @@ func (s *{{$srvType}}) {{$mn}}(
 		}
 	}()
 	{{else}}
-	txn := s.impl.NewTransactionReadOnly()
+	txn := s.store.NewTransactionReadOnly()
 	defer txn.Complete()
 	{{end}}
 
@@ -362,7 +373,7 @@ func (s *{{$srvType}}) {{$mn}}(
 		{{if (not (eq $m.Type "readonly")) -}}
 		events,
 		{{- end -}}
-		err = s.impl.{{$.MethodName $mn}}(ctx, txn,
+		err = s.methods.{{$mn}}(ctx, txn,
 			{{- if $m.Input -}}
 			input,
 			{{- end -}}

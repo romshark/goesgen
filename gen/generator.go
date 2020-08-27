@@ -111,7 +111,3 @@ func (templateContext) ProjectionStateConstant(
 func (templateContext) ServiceType(projectionName string) string {
 	return "Service" + projectionName
 }
-
-func (templateContext) MethodName(methodName string) string {
-	return "M" + methodName
-}
