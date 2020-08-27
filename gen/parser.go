@@ -685,6 +685,7 @@ func parseSources(sourcePackagePath string, s *Schema) error {
 	pkgInfo, err := packages.Load(&packages.Config{
 		Dir: sourcePackagePath,
 		Mode: packages.NeedName |
+			packages.NeedDeps |
 			packages.NeedTypes |
 			packages.NeedSyntax |
 			packages.NeedModule,
