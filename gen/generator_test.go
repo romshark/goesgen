@@ -85,13 +85,6 @@ func TestGenerate(t *testing.T) {
 	cmd.Stderr = &errOut
 	cmd.Dir = root
 	r.NoError(cmd.Run(), errOut.String())
-
-	{
-		cmd := exec.Command("cp", "-r", root, "/Volumes/ramdisk/foobars")
-		var errOut bytes.Buffer
-		cmd.Stderr = &errOut
-		r.NoError(cmd.Run(), errOut.String())
-	}
 }
 
 func AssumeFilesExist(t *testing.T, root string, expected ...string) {
