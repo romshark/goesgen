@@ -19,7 +19,9 @@ import (
 	"reflect"
 	"time"
 
-	src "{{.Schema.SourceModule}}/{{.Schema.SourcePackage}}"
+	{{range $n, $p := .Schema.SourcePackages}}
+	{{$.ImportAlias $p}} "{{$p.ImportPath}}"
+	{{- end -}}
 )
 
 type Logger interface {

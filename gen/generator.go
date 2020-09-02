@@ -131,3 +131,11 @@ func (templateContext) ProjectionStateConstant(
 func (templateContext) ServiceType(projectionName string) string {
 	return "Service" + projectionName
 }
+
+func (templateContext) ImportAlias(p *SourcePackage) string {
+	return "src" + strings.ReplaceAll(p.ID, ".", "")
+}
+
+func (c templateContext) TypeID(t *Type) string {
+	return c.ImportAlias(t.Package) + "." + t.Name
+}

@@ -46,15 +46,10 @@ func TestGeneratorOptionsPrepareErrPackageName(t *testing.T) {
 func TestGenerate(t *testing.T) {
 	r := require.New(t)
 
-	root, files := Setup(t, Files{
-		"schema.yaml":      ValidSchemaSchemaYAML,
-		"main.go":          ValidSchemaMainGO,
-		"domain/domain.go": ValidSchemaDomainGO,
-		"go.mod":           ValidSchemaGoMOD,
-	})
+	root, files := Setup(t, ValidSetup)
 
 	schema, err := gen.Parse(
-		path.Join(root, "domain"),
+		path.Join(root, "src"),
 		files["schema.yaml"],
 	)
 	r.NoError(err)
@@ -66,20 +61,22 @@ func TestGenerate(t *testing.T) {
 		schema,
 		root,
 		gen.GeneratorOptions{
-			PackageName:        "customname",
+			PackageName:        "gencustomname",
 			ExcludeProjections: false,
 		},
 	)
 	r.NoError(err)
-	r.Equal(path.Join(root, "customname"), outPkgPath)
+	r.Equal(path.Join(root, "gencustomname"), outPkgPath)
 
 	// Check output files
 	AssumeFilesExist(t, root,
 		"schema.yaml",
-		"go.mod",
 		"main.go",
-		"domain/domain.go",
-		"customname/customname.go",
+		"src/src.go",
+		"src/sub/sub.go",
+		"src/sub/subsub/subsub.go",
+		"go.mod",
+		"gencustomname/gencustomname.go",
 	)
 
 	// Compile generated sources
@@ -88,6 +85,13 @@ func TestGenerate(t *testing.T) {
 	cmd.Stderr = &errOut
 	cmd.Dir = root
 	r.NoError(cmd.Run(), errOut.String())
+
+	{
+		cmd := exec.Command("cp", "-r", root, "/Volumes/ramdisk/foobars")
+		var errOut bytes.Buffer
+		cmd.Stderr = &errOut
+		r.NoError(cmd.Run(), errOut.String())
+	}
 }
 
 func AssumeFilesExist(t *testing.T, root string, expected ...string) {

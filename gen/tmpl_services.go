@@ -147,13 +147,13 @@ type {{$srvType}}MethodCaller interface {
 		context.Context,
 		Transaction,
 		{{if $m.Input -}}
-		src.{{$m.Input.Name}},
+		{{$.TypeID $m.Input}},
 		{{- else -}}
 		// No input
 		{{- end}}
 	) (
 		{{if $m.Output -}}
-		output src.{{$m.Output.Name}},
+		output {{$.TypeID $m.Output}},
 		{{- else -}}
 		// No output
 		{{- end}}
@@ -306,13 +306,13 @@ func (s *{{$srvType}}) sync(
 func (s *{{$srvType}}) {{$mn}}(
 	ctx context.Context,
 	{{if $m.Input -}}
-	input src.{{$m.Input.Name}},
+	input {{$.TypeID $m.Input}},
 	{{- else -}}
 	// No input
 	{{- end}}
 ) (
 	{{if $m.Output -}}
-	output src.{{$m.Output.Name}},
+	output {{$.TypeID $m.Output}},
 	{{- else -}}
 	// No output
 	{{- end}}
@@ -341,7 +341,7 @@ func (s *{{$srvType}}) {{$mn}}(
 	{{end}}
 
 	{{if $m.Output -}}
-	var outZero src.{{$m.Output.Name}}
+	var outZero {{$.TypeID $m.Output}}
 	{{- end}}
 	{{if (not (eq $m.Type "readonly")) -}}
 	var eventsJSON []byte
