@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"testing"
 
@@ -49,7 +48,7 @@ func TestGenerate(t *testing.T) {
 	root, files := Setup(t, ValidSetup)
 
 	schema, err := gen.Parse(
-		path.Join(root, "src"),
+		filepath.Join(root, "src"),
 		files["schema.yaml"],
 	)
 	r.NoError(err)
@@ -66,7 +65,7 @@ func TestGenerate(t *testing.T) {
 		},
 	)
 	r.NoError(err)
-	r.Equal(path.Join(root, "gencustomname"), outPkgPath)
+	r.Equal(filepath.Join(root, "gencustomname"), outPkgPath)
 
 	// Check output files
 	AssumeFilesExist(t, root,
@@ -97,7 +96,7 @@ func AssumeFilesExist(t *testing.T, root string, expected ...string) {
 				return nil
 			}
 			for _, x := range expected {
-				p := path.Join(root, x)
+				p := filepath.Join(root, x)
 				if p == ph {
 					return nil
 				}

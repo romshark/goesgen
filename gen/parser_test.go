@@ -3,7 +3,7 @@ package gen_test
 import (
 	"go/token"
 	"os"
-	"path"
+	"path/filepath"
 	"testing"
 
 	"github.com/romshark/goesgen/gen"
@@ -17,7 +17,7 @@ func TestParse(t *testing.T) {
 	root, files := Setup(t, ValidSetup)
 
 	s, err := gen.Parse(
-		path.Join(root, "src"),
+		filepath.Join(root, "src"),
 		files["schema.yaml"],
 	)
 	r.NoError(err)
@@ -406,6 +406,20 @@ services:
 	r.Nil(schema)
 }
 
+func withOpenFile(p string, cb func(*os.File) error) error {
+	f, err := os.OpenFile(
+		p,
+		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
+		0777,
+	)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	return cb(f)
+}
+
 func Setup(
 	t *testing.T,
 	files Files,
@@ -413,24 +427,24 @@ func Setup(
 	root = t.TempDir()
 	paths = make(map[string]string, len(files))
 	for filePath, contents := range files {
-		if dir, _ := path.Split(filePath); dir != "" {
+		if dir, _ := filepath.Split(filePath); dir != "" {
 			require.NoError(t, os.MkdirAll(
-				path.Join(root, dir),
+				filepath.Join(root, dir),
 				0777,
 			))
 		}
 
-		p := path.Join(root, filePath)
-		f, err := os.OpenFile(
-			p,
-			os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
-			0777,
-		)
+		p := filepath.Join(root, filePath)
+		err := withOpenFile(p, func(f *os.File) error {
+			_, err := f.WriteString(contents)
+			if err != nil {
+				return err
+			}
+
+			paths[filePath] = p
+			return nil
+		})
 		require.NoError(t, err)
-		defer f.Close()
-		_, err = f.WriteString(contents)
-		require.NoError(t, err)
-		paths[filePath] = p
 	}
 	return
 }
