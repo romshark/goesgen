@@ -121,8 +121,9 @@ func TestParse(t *testing.T) {
 		r.Len(e.Properties, 1)
 
 		// events.E1.properties.foo
-		r.Contains(e.Properties, "foo")
-		CheckType(t, s, e.Properties["foo"])
+		r.Equal(e.Properties[0].Name, "foo")
+		r.Equal(e.Properties[0].Position, 0)
+		CheckType(t, s, e.Properties[0].Type)
 	}
 
 	{ // events.E2
@@ -135,12 +136,14 @@ func TestParse(t *testing.T) {
 		r.Len(e.Properties, 2)
 
 		// events.E2.properties.bar
-		r.Contains(e.Properties, "bar")
-		CheckType(t, s, e.Properties["bar"])
+		r.Equal(e.Properties[0].Name, "bar")
+		r.Equal(e.Properties[0].Position, 0)
+		CheckType(t, s, e.Properties[0].Type)
 
 		// events.E2.properties.baz
-		r.Contains(e.Properties, "baz")
-		CheckType(t, s, e.Properties["baz"])
+		r.Equal(e.Properties[1].Name, "baz")
+		r.Equal(e.Properties[1].Position, 1)
+		CheckType(t, s, e.Properties[1].Type)
 	}
 
 	{ // events.E3
@@ -153,8 +156,9 @@ func TestParse(t *testing.T) {
 		r.Len(e.Properties, 1)
 
 		// events.E3.properties.maz
-		r.Contains(e.Properties, "maz")
-		CheckType(t, s, e.Properties["maz"])
+		r.Equal(e.Properties[0].Name, "maz")
+		r.Equal(e.Properties[0].Position, 0)
+		CheckType(t, s, e.Properties[0].Type)
 	}
 
 	{ // projections

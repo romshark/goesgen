@@ -11,8 +11,8 @@ type Event = interface{}
 {{range $n, $e := $.Schema.Events}}
 // {{$.EventType $n}} defines event {{$n}}
 type {{$.EventType $n}} struct {
-	{{range $p, $t := $e.Properties -}}
-	{{$.Capitalize $p}} {{$.TypeID $t}} "json:\"{{$p}}\""
+	{{range $p := $e.Properties -}}
+	{{$.Capitalize $p.Name}} {{$.TypeID $p.Type}} "json:\"{{$p.Name}}\""
 	{{end -}}
 }
 {{end}}

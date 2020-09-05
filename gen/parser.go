@@ -24,7 +24,7 @@ type (
 	}
 	ModelProjection struct {
 		States      []ProjectionState               `yaml:"states"`
-		Properties  map[PropertyName]TypeID         `yaml:"properties"`
+		Properties  ModelProperties                 `yaml:"properties"`
 		CreateOn    EventName                       `yaml:"createOn"`
 		Transitions map[EventName][]ModelTransition `yaml:"transitions"`
 	}
@@ -38,7 +38,13 @@ type (
 		Type   ServiceMethodType `yaml:"type"`
 		Emits  []EventName       `yaml:"emits"`
 	}
-	ModelEvent        map[PropertyName]TypeID
+	ModelEvent      = ModelProperties
+	ModelProperties struct {
+		events map[PropertyName]struct {
+			pos    int
+			typeID TypeID
+		}
+	}
 	ModelTransition   = string
 	ServiceMethodName = string
 	ServiceMethodType = string
@@ -49,6 +55,32 @@ type (
 	PropertyName      = string
 	TypeID            = string
 )
+
+func (m *ModelProperties) UnmarshalYAML(v *yaml.Node) error {
+	if len(v.Content)%2 != 0 {
+		return fmt.Errorf(
+			"unexpected number of nodes (%d) in event properties",
+			len(v.Content),
+		)
+	}
+	m.events = make(map[PropertyName]struct {
+		pos    int
+		typeID TypeID
+	}, len(v.Content)/2)
+
+	for i, pos := 0, 0; i < len(v.Content); i, pos = i+2, pos+1 {
+		propName := v.Content[i].Value
+		propTypeID := v.Content[i+1].Value
+		m.events[propName] = struct {
+			pos    int
+			typeID TypeID
+		}{
+			pos:    pos,
+			typeID: propTypeID,
+		}
+	}
+	return nil
+}
 
 type (
 	SourcePackageName = string
@@ -81,7 +113,7 @@ type (
 		Name         ProjectionName
 		States       map[ProjectionState]struct{}
 		InitialState ProjectionState
-		Properties   map[PropertyName]*Type
+		Properties   []*Property
 		CreateOn     *Event
 		Transitions  map[*Event][]*Transition
 	}
@@ -100,10 +132,15 @@ type (
 		Output  *Type
 		Emits   []*Event
 	}
+	Property struct {
+		Position int
+		Name     PropertyName
+		Type     *Type
+	}
 	Event struct {
 		Schema     *Schema
 		Name       string
-		Properties map[PropertyName]*Type
+		Properties []*Property
 		References []interface{}
 	}
 	Transition struct {
@@ -235,16 +272,20 @@ func parseEventProperties(
 	v *Event,
 	m ModelEvent,
 ) error {
-	v.Properties = make(map[string]*Type, len(m))
-	for n, t := range m {
+	v.Properties = make([]*Property, len(m.events))
+	for n, t := range m.events {
 		if err := ValidatePropertyName(n); err != nil {
 			return ctx.syntaxErr("invalid property name (%q): %s", n, err)
 		}
-		tp, err := registerReferencedType(ctx.Subcontext(n), t)
+		tp, err := registerReferencedType(ctx.Subcontext(n), t.typeID)
 		if err != nil {
 			return ctx.syntaxErr("invalid type identifier (%q): %s", t, err)
 		}
-		v.Properties[n] = tp
+		v.Properties[t.pos] = &Property{
+			Position: t.pos,
+			Name:     n,
+			Type:     tp,
+		}
 		tp.References = append(tp.References, v)
 	}
 	return nil
@@ -272,17 +313,21 @@ func parseProjectionProperties(
 	p *Projection,
 	m *ModelProjection,
 ) error {
-	p.Properties = make(map[PropertyName]*Type, len(m.Properties))
-	for n, t := range m.Properties {
+	p.Properties = make([]*Property, len(m.Properties.events))
+	for n, t := range m.Properties.events {
 		if err := ValidatePropertyName(n); err != nil {
 			return ctx.syntaxErr("invalid property name (%q): %s", n, err)
 		}
-		tp, err := registerReferencedType(ctx.Subcontext(n), t)
+		tp, err := registerReferencedType(ctx.Subcontext(n), t.typeID)
 		if err != nil {
 			return ctx.Subcontext(n).
 				syntaxErr("invalid type identifier (%q): %s", t, err)
 		}
-		p.Properties[n] = tp
+		p.Properties[t.pos] = &Property{
+			Position: t.pos,
+			Name:     n,
+			Type:     tp,
+		}
 		tp.References = append(tp.References, tp)
 	}
 	return nil
