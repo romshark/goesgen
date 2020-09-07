@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"golang.org/x/tools/go/packages"
 	"gopkg.in/yaml.v3"
@@ -29,21 +30,28 @@ type (
 		Transitions map[EventName][]ModelTransition `yaml:"transitions"`
 	}
 	ModelService struct {
-		Projections []ProjectionName                  `yaml:"projections"`
-		Methods     map[ServiceMethodName]ModelMethod `yaml:"methods"`
+		Projections []ProjectionName    `yaml:"projections"`
+		Methods     ModelServiceMethods `yaml:"methods"`
 	}
-	ModelMethod struct {
-		Input  *TypeID           `yaml:"in"`
-		Output *TypeID           `yaml:"out"`
-		Type   ServiceMethodType `yaml:"type"`
-		Emits  []EventName       `yaml:"emits"`
+	ModelServiceMethod struct {
+		Pos          int
+		CommentLines []string
+		Input        *TypeID           `yaml:"in"`
+		Output       *TypeID           `yaml:"out"`
+		Type         ServiceMethodType `yaml:"type"`
+		Emits        []EventName       `yaml:"emits"`
 	}
 	ModelEvent      = ModelProperties
 	ModelProperties struct {
-		events map[PropertyName]struct {
-			pos    int
-			typeID TypeID
-		}
+		events map[PropertyName]ModelProperty
+	}
+	ModelProperty struct {
+		Pos          int
+		TypeID       TypeID
+		CommentLines []string
+	}
+	ModelServiceMethods struct {
+		methods map[ServiceMethodName]ModelServiceMethod
 	}
 	ModelTransition   = string
 	ServiceMethodName = string
@@ -63,21 +71,91 @@ func (m *ModelProperties) UnmarshalYAML(v *yaml.Node) error {
 			len(v.Content),
 		)
 	}
-	m.events = make(map[PropertyName]struct {
-		pos    int
-		typeID TypeID
-	}, len(v.Content)/2)
+	m.events = make(map[PropertyName]ModelProperty, len(v.Content)/2)
 
 	for i, pos := 0, 0; i < len(v.Content); i, pos = i+2, pos+1 {
-		propName := v.Content[i].Value
-		propTypeID := v.Content[i+1].Value
-		m.events[propName] = struct {
-			pos    int
-			typeID TypeID
-		}{
-			pos:    pos,
-			typeID: propTypeID,
+		nameNode := v.Content[i]
+		typeNode := v.Content[i+1]
+
+		commentLines := ParseComment(nameNode.HeadComment)
+		if len(commentLines) > 0 {
+			n := strings.Title(nameNode.Value)
+			commentLines[0] = strings.Title(commentLines[0])
+			if strings.Fields(commentLines[0])[0] != n {
+				return fmt.Errorf(
+					"illegal event property comment at %d:%d, "+
+						"must begin with %q",
+					nameNode.Line, nameNode.Column, n+"...",
+				)
+			}
 		}
+
+		m.events[nameNode.Value] = ModelProperty{
+			Pos:          pos,
+			TypeID:       typeNode.Value,
+			CommentLines: commentLines,
+		}
+	}
+	return nil
+}
+
+func (m *ModelServiceMethods) UnmarshalYAML(v *yaml.Node) error {
+	m.methods = make(
+		map[ServiceMethodName]ModelServiceMethod,
+		len(v.Content)/2,
+	)
+
+	for i, pos := 0, 0; i < len(v.Content); i, pos = i+2, pos+1 {
+		nameNode := v.Content[i]
+		methodNode := v.Content[i+1]
+
+		commentLines := ParseComment(nameNode.HeadComment)
+		if len(commentLines) > 0 {
+			n := strings.Title(nameNode.Value)
+			commentLines[0] = strings.Title(commentLines[0])
+			if strings.Fields(commentLines[0])[0] != n {
+				return fmt.Errorf(
+					"illegal service method comment at %d:%d, "+
+						"must begin with %q",
+					nameNode.Line, nameNode.Column, n+"...",
+				)
+			}
+		}
+
+		v := ModelServiceMethod{
+			Pos:          pos,
+			CommentLines: commentLines,
+		}
+
+		for i := 0; i < len(methodNode.Content); i++ {
+			switch c := methodNode.Content[i]; c.Value {
+			case "in":
+				i++
+				v.Input = &methodNode.Content[i].Value
+			case "out":
+				i++
+				v.Output = &methodNode.Content[i].Value
+			case "type":
+				i++
+				v.Type = methodNode.Content[i].Value
+			case "emits":
+				i++
+				v.Emits = make(
+					[]EventName,
+					len(methodNode.Content[i].Content),
+				)
+				for i, c := range methodNode.Content[i].Content {
+					v.Emits[i] = c.Value
+				}
+			default:
+				return fmt.Errorf(
+					`unexpected field %q (expected either of %q) at %d:%d`,
+					c.Value, "in, out, type, emits", c.Line, c.Column,
+				)
+			}
+		}
+
+		m.methods[nameNode.Value] = v
 	}
 	return nil
 }
@@ -125,17 +203,19 @@ type (
 		Subscriptions map[EventName]*Event
 	}
 	ServiceMethod struct {
-		Service *Service
-		Name    ServiceMethodName
-		Type    ServiceMethodType
-		Input   *Type
-		Output  *Type
-		Emits   []*Event
+		Service      *Service
+		Name         ServiceMethodName
+		Type         ServiceMethodType
+		Input        *Type
+		Output       *Type
+		Emits        []*Event
+		CommentLines []string
 	}
 	Property struct {
-		Position int
-		Name     PropertyName
-		Type     *Type
+		Position     int
+		Name         PropertyName
+		Type         *Type
+		CommentLines []string
 	}
 	Event struct {
 		Schema     *Schema
@@ -277,14 +357,15 @@ func parseEventProperties(
 		if err := ValidatePropertyName(n); err != nil {
 			return ctx.syntaxErr("invalid property name (%q): %s", n, err)
 		}
-		tp, err := registerReferencedType(ctx.Subcontext(n), t.typeID)
+		tp, err := registerReferencedType(ctx.Subcontext(n), t.TypeID)
 		if err != nil {
 			return ctx.syntaxErr("invalid type identifier (%q): %s", t, err)
 		}
-		v.Properties[t.pos] = &Property{
-			Position: t.pos,
-			Name:     n,
-			Type:     tp,
+		v.Properties[t.Pos] = &Property{
+			Position:     t.Pos,
+			Name:         n,
+			Type:         tp,
+			CommentLines: t.CommentLines,
 		}
 		tp.References = append(tp.References, v)
 	}
@@ -318,15 +399,16 @@ func parseProjectionProperties(
 		if err := ValidatePropertyName(n); err != nil {
 			return ctx.syntaxErr("invalid property name (%q): %s", n, err)
 		}
-		tp, err := registerReferencedType(ctx.Subcontext(n), t.typeID)
+		tp, err := registerReferencedType(ctx.Subcontext(n), t.TypeID)
 		if err != nil {
 			return ctx.Subcontext(n).
 				syntaxErr("invalid type identifier (%q): %s", t, err)
 		}
-		p.Properties[t.pos] = &Property{
-			Position: t.pos,
-			Name:     n,
-			Type:     tp,
+		p.Properties[t.Pos] = &Property{
+			Position:     t.Pos,
+			Name:         n,
+			Type:         tp,
+			CommentLines: t.CommentLines,
 		}
 		tp.References = append(tp.References, tp)
 	}
@@ -556,11 +638,14 @@ func parseServiceMethods(
 	v *Service,
 	m *ModelService,
 ) error {
-	if len(m.Methods) < 1 {
+	if len(m.Methods.methods) < 1 {
 		return ctx.semanticErr("missing methods")
 	}
-	v.Methods = make(map[ServiceMethodName]*ServiceMethod, len(m.Methods))
-	for name, model := range m.Methods {
+	v.Methods = make(
+		map[ServiceMethodName]*ServiceMethod,
+		len(m.Methods.methods),
+	)
+	for name, model := range m.Methods.methods {
 		if err := ValidateServiceMethodName(name); err != nil {
 			return ctx.syntaxErr(
 				"invalid method name (%q): %s",
@@ -568,8 +653,9 @@ func parseServiceMethods(
 			)
 		}
 		m := &ServiceMethod{
-			Service: v,
-			Name:    name,
+			Service:      v,
+			Name:         name,
+			CommentLines: model.CommentLines,
 		}
 		if err := parseServiceMethodInput(
 			ctx.Subcontext("input"),
@@ -946,6 +1032,25 @@ func Parse(
 	}
 
 	return s, nil
+}
+
+func ParseComment(s string) []string {
+	f := strings.FieldsFunc(
+		strings.TrimSpace(s),
+		func(r rune) bool { return r == '\n' },
+	)
+FLOOP:
+	for i := range f {
+		s := f[i]
+		for j, c := range s {
+			if c != '#' && !unicode.IsSpace(c) {
+				f[i] = strings.TrimSpace(s[j:])
+				continue FLOOP
+			}
+		}
+		f[i] = ""
+	}
+	return f
 }
 
 type SyntaxErr string

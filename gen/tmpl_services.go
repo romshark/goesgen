@@ -138,6 +138,9 @@ type {{$srvType}}StoreHandler interface {
 type {{$srvType}}MethodCaller interface {
 	{{range $mn, $m := $s.Methods}}
 	// {{$mn}} represents method {{$srvName}}.{{$mn}}
+	{{- range $l := $m.CommentLines}}
+	// {{$l}}
+	{{- end}}
 	//
 	// WARNING: this method is read-only and must not mutate neither
 	// the state of the projection nor the projection version!
@@ -303,6 +306,9 @@ func (s *{{$srvType}}) sync(
 }
 
 {{range $mn, $m := $s.Methods}}
+{{- range $l := $m.CommentLines}}
+// {{$l}}
+{{- end}}
 func (s *{{$srvType}}) {{$mn}}(
 	ctx context.Context,
 	{{if $m.Input -}}

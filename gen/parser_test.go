@@ -467,9 +467,13 @@ const ValidSchemaSchemaYAML = `
 ---
 events:
   E1:
+    # foo defines foo
     foo: Foo
   E2:
     bar: sub.Bar
+    # baz represents baz
+    # 
+    # and another ## comment line
     baz: sub.subsub.Baz
   E3:
     maz: Foo
@@ -494,12 +498,16 @@ services:
     projections:
       - P1
     methods:
+      # M1 does something
       M1:
         in: Foo
         out: sub.Bar
         type: transaction
         emits:
           - E1
+      # M2 does something
+      #
+      # another line
       M2:
         type: append
         emits:
