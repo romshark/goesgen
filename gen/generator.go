@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"go/format"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 	"text/template"
 )
@@ -34,13 +34,13 @@ func (g *Generator) Generate(
 		return "", fmt.Errorf("preparing options: %w", err)
 	}
 
-	outPackagePath = path.Join(outputPath, options.PackageName)
+	outPackagePath = filepath.Join(outputPath, options.PackageName)
 	if err := os.MkdirAll(outPackagePath, 0777); err != nil {
 		return "", fmt.Errorf("setting up %s: %w", outPackagePath, err)
 	}
 	if err := writeGoFile(
 		nil,
-		path.Join(outPackagePath, options.PackageName+".go"),
+		filepath.Join(outPackagePath, options.PackageName+".go"),
 		g.tmpl,
 		templateContext{
 			Options: &options,

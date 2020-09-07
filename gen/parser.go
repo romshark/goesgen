@@ -977,6 +977,7 @@ func Parse(
 			schemaFilePath, err,
 		)
 	}
+	defer fl.Close()
 
 	flc, err := ioutil.ReadAll(fl)
 	if err != nil {
