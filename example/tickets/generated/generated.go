@@ -96,7 +96,8 @@ services:
         in: UpdateTicketIn
         emits:
           - TicketDescriptionChanged
-          - TicketTitleChanged*/
+          - TicketTitleChanged
+*/
 
 package generated
 
@@ -469,12 +470,12 @@ type Transaction = interface{}
 // ServiceTickets projects the following entities:
 //  Ticket
 // therefore, Tickets subscribes to the following events:
-//  TicketCommented
-//  UserUnassignedFromTicket
-//  TicketDescriptionChanged
 //  TicketTitleChanged
 //  UserAssignedToTicket
 //  TicketClosed
+//  TicketCommented
+//  UserUnassignedFromTicket
+//  TicketDescriptionChanged
 type ServiceTickets struct {
 	eventlog EventLogger
 	logErr   Logger
