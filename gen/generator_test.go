@@ -47,10 +47,7 @@ func TestGenerate(t *testing.T) {
 
 	root, files := Setup(t, ValidSetup)
 
-	schema, err := gen.Parse(
-		filepath.Join(root, "src"),
-		files["schema.yaml"],
-	)
+	schema, err := gen.Parse(root, files["schema.yaml"])
 	r.NoError(err)
 
 	g := gen.NewGenerator()
@@ -70,10 +67,10 @@ func TestGenerate(t *testing.T) {
 	// Check output files
 	AssumeFilesExist(t, root,
 		"schema.yaml",
-		"main.go",
-		"src/src.go",
-		"src/sub/sub.go",
-		"src/sub/subsub/subsub.go",
+		"cmd/main/main.go",
+		"src.go",
+		"sub/sub.go",
+		"sub/subsub/subsub.go",
 		"go.mod",
 		"gencustomname/gencustomname.go",
 	)

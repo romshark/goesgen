@@ -16,10 +16,7 @@ func TestParse(t *testing.T) {
 
 	root, files := Setup(t, ValidSetup)
 
-	s, err := gen.Parse(
-		filepath.Join(root, "src"),
-		files["schema.yaml"],
-	)
+	s, err := gen.Parse(root, files["schema.yaml"])
 	r.NoError(err)
 	r.NotNil(s)
 
@@ -43,7 +40,7 @@ func TestParse(t *testing.T) {
 				r.Equal(s.SourcePackages["src"], t.Package)
 				r.Equal(
 					token.Position{
-						Filename: files["src/src.go"],
+						Filename: files["src.go"],
 						Line:     2,
 						Column:   6,
 						Offset:   17,
@@ -70,7 +67,7 @@ func TestParse(t *testing.T) {
 				r.Equal(s.SourcePackages["src.sub"], t.Package)
 				r.Equal(
 					token.Position{
-						Filename: files["src/sub/sub.go"],
+						Filename: files["sub/sub.go"],
 						Line:     2,
 						Column:   6,
 						Offset:   17,
@@ -97,7 +94,7 @@ func TestParse(t *testing.T) {
 				r.Equal(s.SourcePackages["src.sub.subsub"], t.Package)
 				r.Equal(
 					token.Position{
-						Filename: files["src/sub/subsub/subsub.go"],
+						Filename: files["sub/subsub/subsub.go"],
 						Line:     2,
 						Column:   6,
 						Offset:   20,
@@ -348,7 +345,7 @@ services:
           - E1
 `,
 
-		"source.go": `package main
+		"source.go": `package src
 
 type (
 	Foo = string
@@ -359,8 +356,8 @@ type (
 )
 `,
 
-		"go.mod": `module tst
-		
+		"go.mod": `module src
+
 go 1.15`,
 	})
 
@@ -395,7 +392,10 @@ services:
       M1:
         in: T
 `,
-		"main.go": `package main; type T = int`,
+		"src.go": `package src; type T = int`,
+		"go.mod": `module src
+
+go 1.15`,
 	})
 
 	schema, err := gen.Parse(root, files["schema.yaml"])
@@ -457,12 +457,12 @@ func CheckType(t *testing.T, s *gen.Schema, typ *gen.Type) {
 }
 
 var ValidSetup = Files{
-	"schema.yaml":              ValidSchemaSchemaYAML,
-	"main.go":                  ValidSchemaMainGO,
-	"src/src.go":               ValidSchemaSrcGO,
-	"src/sub/sub.go":           ValidSchemaSubGO,
-	"src/sub/subsub/subsub.go": ValidSchemaSubsubGO,
-	"go.mod":                   ValidSchemaGoMOD,
+	"schema.yaml":          ValidSchemaSchemaYAML,
+	"cmd/main/main.go":     ValidSchemaMainGO,
+	"src.go":               ValidSchemaSrcGO,
+	"sub/sub.go":           ValidSchemaSubGO,
+	"sub/subsub/subsub.go": ValidSchemaSubsubGO,
+	"go.mod":               ValidSchemaGoMOD,
 }
 
 const ValidSchemaSrcGO = `package src

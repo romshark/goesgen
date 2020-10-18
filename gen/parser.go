@@ -855,56 +855,27 @@ func parseSources(
 	}
 	pis := map[SourcePackageID]Pkg{}
 
-	loadPackage := func(p *SourcePackage) error {
+	for _, p := range ctx.schema.SourcePackages {
 		fset := token.NewFileSet()
-		pkgInfo, err := packages.Load(&packages.Config{
-			Dir:  p.Path,
-			Fset: fset,
-			Mode: packages.NeedName |
-				packages.NeedDeps |
-				packages.NeedTypes |
-				packages.NeedSyntax |
+		pi, err := parseGoPackage(
+			p.Path,
+			fset,
+			packages.NeedName|
+				packages.NeedDeps|
+				packages.NeedTypes|
+				packages.NeedSyntax|
 				packages.NeedModule,
-		}, ".")
-		if len(pkgInfo) != 1 {
-			return fmt.Errorf("package (%q) not found", p.Path)
-		}
+		)
 		if err != nil {
-			return fmt.Errorf(
-				"parsing source package (%s): %w",
-				sourcePackagePath, err,
-			)
+			return err
 		}
-		pi := pkgInfo[0]
-		if len(pi.Errors) > 0 {
-			return fmt.Errorf(
-				"parsing source package (%s): %v",
-				sourcePackagePath, pi.Errors,
-			)
-		}
-
-		if pi.Module == nil {
-			return fmt.Errorf(
-				"source package (%s) is not a Go module (missing go.mod)",
-				sourcePackagePath,
-			)
-		}
-
-		if ctx.schema.SourcePackage == p {
-			// Main source package
-			ctx.schema.SourceModule = pi.Module.Path
-			ctx.schema.SourcePackage.ImportPath = path.Join(
-				pi.Module.Path,
-				ctx.schema.SourcePackage.Name,
-			)
-		} else {
+		if ctx.schema.SourcePackage != p {
+			// Subpackage
 			p.ImportPath = path.Join(
-				ctx.schema.SourceModule,
-				ctx.schema.SourcePackage.Name,
+				ctx.schema.SourcePackage.ImportPath,
 				p.ImportPath,
 			)
 			if ctx.schema.SourceModule != pi.Module.Path {
-				// Subpackage
 				return ctx.semanticErr(
 					"package %s (%s) isn't part of the source module (%s)",
 					p.ID, p.Path, ctx.schema.SourceModule,
@@ -913,23 +884,6 @@ func parseSources(
 		}
 
 		pis[p.ID] = Pkg{pi, fset}
-
-		return nil
-	}
-
-	if err := loadPackage(
-		ctx.schema.SourcePackages[ctx.schema.SourcePackage.ID],
-	); err != nil {
-		return err
-	}
-	for _, p := range ctx.schema.SourcePackages {
-		if p == ctx.schema.SourcePackage {
-			// Ignore the main package
-			continue
-		}
-		if err := loadPackage(p); err != nil {
-			return err
-		}
 	}
 
 	// Determine type source locations
@@ -991,23 +945,41 @@ func Parse(
 		Raw: string(flc),
 		SourcePackage: &SourcePackage{
 			Types: map[TypeID]*Type{},
+			Path:  sourcePackagePath,
 		},
 	}
 	ctx := context{schema: s}
 
 	{ // Determine package path and name
-		a, err := filepath.Abs(sourcePackagePath)
+		pi, err := parseGoPackage(
+			sourcePackagePath,
+			token.NewFileSet(),
+			packages.NeedName|packages.NeedModule,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		s.SourcePackage.Name = pi.Name
+		s.SourcePackage.ID = pi.Name
+		s.SourceModule = pi.Module.Path
+
+		absolutePath, err := filepath.Abs(sourcePackagePath)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"determining absolute source package path: %w",
 				err,
 			)
 		}
-		p := s.SourcePackage
-		p.Path = a
 
-		_, p.Name = filepath.Split(a)
-		p.ID = p.Name
+		if filepath.Dir(pi.Module.GoMod) == absolutePath {
+			// The given source package is the main module
+			s.SourcePackage.ImportPath = pi.Module.Path
+		} else {
+			s.SourcePackage.ImportPath = filepath.Join(
+				pi.Module.Path, pi.Name,
+			)
+		}
 	}
 
 	s.SourcePackages = map[SourcePackageID]*SourcePackage{
@@ -1110,4 +1082,41 @@ func (c context) semanticErr(
 		msg = c.path + ": " + msg
 	}
 	return SemanticErr(msg)
+}
+
+func parseGoPackage(
+	path string,
+	fset *token.FileSet,
+	mode packages.LoadMode,
+) (*packages.Package, error) {
+	pkgInfo, err := packages.Load(&packages.Config{
+		Dir:  path,
+		Fset: fset,
+		Mode: mode,
+	}, ".")
+	if len(pkgInfo) != 1 {
+		return nil, fmt.Errorf("package (%q) not found", path)
+	}
+	if err != nil {
+		return nil, fmt.Errorf(
+			"parsing source package (%s): %w",
+			path, err,
+		)
+	}
+	pi := pkgInfo[0]
+	if len(pi.Errors) > 0 {
+		return nil, fmt.Errorf(
+			"parsing source package (%s): %v",
+			path, pi.Errors,
+		)
+	}
+
+	if pi.Module == nil {
+		return nil, fmt.Errorf(
+			"source package (%s) isn't part of a Go module (missing go.mod)",
+			path,
+		)
+	}
+
+	return pi, nil
 }
