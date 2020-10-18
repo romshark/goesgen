@@ -1,45 +1,39 @@
 events:
   TicketCreated:
-    id: TicketID
-    title: TicketTitle
+    id: id.TicketID
+    title: domain.tickettitle.TicketTitle
     description: TicketDescription
-    author: UserID
+    author: id.UserID
   UserAssignedToTicket:
-    ticket: TicketID
-    by: UserID
+    ticket: id.TicketID
+    by: id.UserID
   TicketClosed:
-    ticket: TicketID
-    by: UserID
+    ticket: id.TicketID
+    by: id.UserID
   TicketCommented:
-    ticket: TicketID
+    ticket: id.TicketID
     message: TicketCommentMessage
-    by: UserID
+    by: id.UserID
   UserUnassignedFromTicket:
-    user: UserID
-    ticket: TicketID
-    by: UserID
+    user: id.UserID
+    ticket: id.TicketID
+    by: id.UserID
   TicketDescriptionChanged:
-    ticket: TicketID
+    ticket: id.TicketID
     newDescription: TicketDescription
-    by: UserID
+    by: id.UserID
   TicketTitleChanged:
-    ticket: TicketID
-    newTitle: TicketTitle
-    by: UserID
+    ticket: id.TicketID
+    newTitle: domain.tickettitle.TicketTitle
+    by: id.UserID
 
 projections:
-  ticket:
+  Ticket:
     states:
       - New
       - InProgress
       - Closed
       - Stalled
-    properties:
-      id: TicketID
-      title: TicketTitle
-      description: TicketDescription
-      author: UserID
-      assignees: TicketAssignees
     createOn: TicketCreated
     transitions:
       UserAssignedToTicket:
@@ -69,48 +63,35 @@ projections:
 services:
   Tickets:
     projections:
-      - ticket
+      - Ticket
     methods:
+      GetTicketByID:
+        in: id.TicketID
+        out: GetTicketByIDOut
+        type: readonly
       CreateTicket:
-        parameters:
-          id: TicketID
-          title: TicketTitle
-          description: TicketDescription
-          author: UserID
+        in: CreateTicketIn
+        out: CreateTicketOut
         emits:
           - TicketCreated
       AssignUserToTicket:
-        paramters:
-          ticket: TicketID
-          by: UserID
+        in: AssignUserToTicket
         emits:
           - UserAssignedToTicket
       CloseTicket:
-        parameters:
-          ticket: TicketID
-          by: UserID
+        in: CloseTicketIn
         emits:
           - TicketClosed
       CreateComment:
-        parameters:
-          ticket: TicketID
-          message: TicketCommentMessage
-          by: UserID
+        in: CreateCommentIn
         emits:
           - TicketCommented
       UnassigneUserFromTicket:
-        parameters:
-          user: UserID
-          ticket: TicketID
-          by: UserID
+        in: UnassigneUserFromTicketIn
         emits:
           - UserUnassignedFromTicket
       UpdateTicket:
-        parameters:
-          ticket: TicketID
-          newDescription: OptionalTicketDescription
-          newTitle: OptionalTicketTitle
-          by: UserID
+        in: UpdateTicketIn
         emits:
           - TicketDescriptionChanged
           - TicketTitleChanged
