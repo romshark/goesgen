@@ -1,0 +1,32 @@
+package tickets
+
+import (
+	"context"
+	"fmt"
+	"tickets/auth"
+	"tickets/generated"
+	"tickets/service/tickets/io"
+)
+
+func (s *Service) UnassignUserFromTicket(
+	ctx context.Context,
+	tx generated.TransactionReader,
+	in io.UnassignUserFromTicketIn,
+) ([]generated.Event, error) {
+	client, err := auth.User(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, ok := tx.(transaction).store.state.tickets[in.Ticket]; !ok {
+		return nil, fmt.Errorf("ticket %s not found", in.Ticket)
+	}
+
+	return []generated.Event{
+		generated.EventUserUnassignedFromTicket{
+			User:   in.User,
+			Ticket: in.Ticket,
+			By:     client,
+		},
+	}, nil
+}

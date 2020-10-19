@@ -1,31 +1,33 @@
 events:
   TicketCreated:
-    id: id.TicketID
-    title: domain.tickettitle.TicketTitle
+    id: id.Ticket
+    title: TicketTitle
     description: TicketDescription
-    author: id.UserID
-  UserAssignedToTicket:
-    ticket: id.TicketID
-    by: id.UserID
+    author: id.User
   TicketClosed:
-    ticket: id.TicketID
-    by: id.UserID
+    ticket: id.Ticket
+    by: id.User
   TicketCommented:
-    ticket: id.TicketID
+    id: id.Comment
+    ticket: id.Ticket
     message: TicketCommentMessage
-    by: id.UserID
+    by: id.User
+  UserAssignedToTicket:
+    user: id.User
+    ticket: id.Ticket
+    by: id.User
   UserUnassignedFromTicket:
-    user: id.UserID
-    ticket: id.TicketID
-    by: id.UserID
+    user: id.User
+    ticket: id.Ticket
+    by: id.User
   TicketDescriptionChanged:
-    ticket: id.TicketID
+    ticket: id.Ticket
     newDescription: TicketDescription
-    by: id.UserID
+    by: id.User
   TicketTitleChanged:
-    ticket: id.TicketID
-    newTitle: domain.tickettitle.TicketTitle
-    by: id.UserID
+    ticket: id.Ticket
+    newTitle: TicketTitle
+    by: id.User
 
 projections:
   Ticket:
@@ -66,32 +68,33 @@ services:
       - Ticket
     methods:
       GetTicketByID:
-        in: id.TicketID
-        out: GetTicketByIDOut
+        in: id.Ticket
+        out: service.tickets.io.GetTicketByIDOut
         type: readonly
       CreateTicket:
-        in: CreateTicketIn
-        out: CreateTicketOut
+        in: service.tickets.io.CreateTicketIn
+        out: service.tickets.io.CreateTicketOut
         emits:
           - TicketCreated
       AssignUserToTicket:
-        in: AssignUserToTicket
+        in: service.tickets.io.AssignUserToTicketIn
         emits:
           - UserAssignedToTicket
       CloseTicket:
-        in: CloseTicketIn
+        in: service.tickets.io.CloseTicketIn
         emits:
           - TicketClosed
       CreateComment:
-        in: CreateCommentIn
+        in: service.tickets.io.CreateCommentIn
+        out: service.tickets.io.CreateCommentOut
         emits:
           - TicketCommented
-      UnassigneUserFromTicket:
-        in: UnassigneUserFromTicketIn
+      UnassignUserFromTicket:
+        in: service.tickets.io.UnassignUserFromTicketIn
         emits:
           - UserUnassignedFromTicket
       UpdateTicket:
-        in: UpdateTicketIn
+        in: service.tickets.io.UpdateTicketIn
         emits:
           - TicketDescriptionChanged
           - TicketTitleChanged

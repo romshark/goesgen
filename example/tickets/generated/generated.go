@@ -2,32 +2,34 @@
 
 /* SCHEMA (YAML):events:
   TicketCreated:
-    id: id.TicketID
-    title: domain.tickettitle.TicketTitle
+    id: id.Ticket
+    title: TicketTitle
     description: TicketDescription
-    author: id.UserID
-  UserAssignedToTicket:
-    ticket: id.TicketID
-    by: id.UserID
+    author: id.User
   TicketClosed:
-    ticket: id.TicketID
-    by: id.UserID
+    ticket: id.Ticket
+    by: id.User
   TicketCommented:
-    ticket: id.TicketID
+    id: id.Comment
+    ticket: id.Ticket
     message: TicketCommentMessage
-    by: id.UserID
+    by: id.User
+  UserAssignedToTicket:
+    user: id.User
+    ticket: id.Ticket
+    by: id.User
   UserUnassignedFromTicket:
-    user: id.UserID
-    ticket: id.TicketID
-    by: id.UserID
+    user: id.User
+    ticket: id.Ticket
+    by: id.User
   TicketDescriptionChanged:
-    ticket: id.TicketID
+    ticket: id.Ticket
     newDescription: TicketDescription
-    by: id.UserID
+    by: id.User
   TicketTitleChanged:
-    ticket: id.TicketID
-    newTitle: domain.tickettitle.TicketTitle
-    by: id.UserID
+    ticket: id.Ticket
+    newTitle: TicketTitle
+    by: id.User
 
 projections:
   Ticket:
@@ -68,32 +70,33 @@ services:
       - Ticket
     methods:
       GetTicketByID:
-        in: id.TicketID
-        out: GetTicketByIDOut
+        in: id.Ticket
+        out: service.tickets.io.GetTicketByIDOut
         type: readonly
       CreateTicket:
-        in: CreateTicketIn
-        out: CreateTicketOut
+        in: service.tickets.io.CreateTicketIn
+        out: service.tickets.io.CreateTicketOut
         emits:
           - TicketCreated
       AssignUserToTicket:
-        in: AssignUserToTicket
+        in: service.tickets.io.AssignUserToTicketIn
         emits:
           - UserAssignedToTicket
       CloseTicket:
-        in: CloseTicketIn
+        in: service.tickets.io.CloseTicketIn
         emits:
           - TicketClosed
       CreateComment:
-        in: CreateCommentIn
+        in: service.tickets.io.CreateCommentIn
+        out: service.tickets.io.CreateCommentOut
         emits:
           - TicketCommented
-      UnassigneUserFromTicket:
-        in: UnassigneUserFromTicketIn
+      UnassignUserFromTicket:
+        in: service.tickets.io.UnassignUserFromTicketIn
         emits:
           - UserUnassignedFromTicket
       UpdateTicket:
-        in: UpdateTicketIn
+        in: service.tickets.io.UpdateTicketIn
         emits:
           - TicketDescriptionChanged
           - TicketTitleChanged
@@ -113,8 +116,8 @@ import (
 	"time"
 
 	srctickets "tickets"
-	srcticketsdomaintickettitle "tickets/domain/tickettitle"
 	srcticketsid "tickets/id"
+	srcticketsserviceticketsio "tickets/service/tickets/io"
 )
 
 type Logger interface {
@@ -143,63 +146,67 @@ type Event = interface{}
 
 // EventTicketClosed defines event TicketClosed
 type EventTicketClosed struct {
-	Ticket srcticketsid.TicketID "json:\"ticket\""
+	Ticket srcticketsid.Ticket "json:\"ticket\""
 
-	By srcticketsid.UserID "json:\"by\""
+	By srcticketsid.User "json:\"by\""
 }
 
 // EventTicketCommented defines event TicketCommented
 type EventTicketCommented struct {
-	Ticket srcticketsid.TicketID "json:\"ticket\""
+	Id srcticketsid.Comment "json:\"id\""
+
+	Ticket srcticketsid.Ticket "json:\"ticket\""
 
 	Message srctickets.TicketCommentMessage "json:\"message\""
 
-	By srcticketsid.UserID "json:\"by\""
+	By srcticketsid.User "json:\"by\""
 }
 
 // EventTicketCreated defines event TicketCreated
 type EventTicketCreated struct {
-	Id srcticketsid.TicketID "json:\"id\""
+	Id srcticketsid.Ticket "json:\"id\""
 
-	Title srcticketsdomaintickettitle.TicketTitle "json:\"title\""
+	Title srctickets.TicketTitle "json:\"title\""
 
 	Description srctickets.TicketDescription "json:\"description\""
 
-	Author srcticketsid.UserID "json:\"author\""
+	Author srcticketsid.User "json:\"author\""
 }
 
 // EventTicketDescriptionChanged defines event TicketDescriptionChanged
 type EventTicketDescriptionChanged struct {
-	Ticket srcticketsid.TicketID "json:\"ticket\""
+	Ticket srcticketsid.Ticket "json:\"ticket\""
 
 	NewDescription srctickets.TicketDescription "json:\"newDescription\""
 
-	By srcticketsid.UserID "json:\"by\""
+	By srcticketsid.User "json:\"by\""
 }
 
 // EventTicketTitleChanged defines event TicketTitleChanged
 type EventTicketTitleChanged struct {
-	Ticket srcticketsid.TicketID "json:\"ticket\""
+	Ticket srcticketsid.Ticket "json:\"ticket\""
 
-	NewTitle srcticketsdomaintickettitle.TicketTitle "json:\"newTitle\""
+	NewTitle srctickets.TicketTitle "json:\"newTitle\""
 
-	By srcticketsid.UserID "json:\"by\""
+	By srcticketsid.User "json:\"by\""
 }
 
 // EventUserAssignedToTicket defines event UserAssignedToTicket
 type EventUserAssignedToTicket struct {
-	Ticket srcticketsid.TicketID "json:\"ticket\""
+	User srcticketsid.User "json:\"user\""
 
-	By srcticketsid.UserID "json:\"by\""
+	Ticket srcticketsid.Ticket "json:\"ticket\""
+
+	By srcticketsid.User "json:\"by\""
 }
 
 // EventUserUnassignedFromTicket defines event UserUnassignedFromTicket
 type EventUserUnassignedFromTicket struct {
-	User srcticketsid.UserID "json:\"user\""
+	User srcticketsid.User "json:\"user\""
 
-	Ticket srcticketsid.TicketID "json:\"ticket\""
+	Ticket srcticketsid.Ticket "json:\"ticket\""
 
-	By srcticketsid.UserID "json:\"by\""
+	By srcticketsid.User "json:\"by\""
 }
 
 // GetEventTypeName returns the given event's name.
@@ -449,33 +456,38 @@ type EventLogger interface {
 	)
 }
 
-// TransactionReadOnly represents an abstract
-// read-only (shared locking) transaction handler
-type TransactionReadOnly interface {
-	Complete()
-}
-
-// TransactionReadWrite represents an abstract
-// read-write (excluive locking) transaction handler
-type TransactionReadWrite interface {
+// StoreTransactionReadWriter represents an abstract
+// read-write (exclusive locking) store transaction handler
+type StoreTransactionReadWriter interface {
 	Commit()
 	Rollback()
 }
 
-// Transaction represents an arbitrary abstract transaction object
-// that's supposed to be used for queries and mutations only.
-// Transaction must not be committed or rolled back!
-type Transaction = interface{}
+// StoreTransactionReader represents an abstract
+// read only (shared locking) store transaction handler
+type StoreTransactionReader interface {
+	Complete()
+}
+
+// TransactionWriter represents an arbitrary abstract transaction object
+// that's supposed to be used for write-only mutations.
+// TransactionWriter must not be committed or rolled back!
+type TransactionWriter = interface{}
+
+// TransactionReader represents an arbitrary abstract transaction object
+// that's supposed to be used for read-only queries.
+// TransactionReader must not be committed or rolled back!
+type TransactionReader = interface{}
 
 // ServiceTickets projects the following entities:
 //  Ticket
 // therefore, Tickets subscribes to the following events:
-//  TicketTitleChanged
-//  UserAssignedToTicket
 //  TicketClosed
 //  TicketCommented
+//  UserAssignedToTicket
 //  UserUnassignedFromTicket
 //  TicketDescriptionChanged
+//  TicketTitleChanged
 type ServiceTickets struct {
 	eventlog EventLogger
 	logErr   Logger
@@ -486,15 +498,16 @@ type ServiceTickets struct {
 // ServiceTicketsStoreHandler represents a store handler implementation
 // of the service Tickets
 type ServiceTicketsStoreHandler interface {
-	// NewTransactionReadWrite creates a new exclusive read-write transaction.
+	// NewTransactionReadWriter creates a new exclusive
+	// read-write transaction handler.
 	// The returned transaction is passed to implementation methods
 	// and will eventually be either committed or rolled back respectively.
-	NewTransactionReadWrite() TransactionReadWrite
+	NewTransactionReadWriter() StoreTransactionReadWriter
 
-	// NewTransactionReadOnly creates a new read-only transaction.
+	// NewTransactionReader creates a new read-only transaction handler.
 	// The returned transaction is passed to implementation methods
 	// and will eventually be completed.
-	NewTransactionReadOnly() TransactionReadOnly
+	NewTransactionReader() StoreTransactionReader
 
 	// ProjectionVersion returns the current projection version.
 	// Returns an empty string if the projection wasn't initialized yet.
@@ -502,7 +515,7 @@ type ServiceTicketsStoreHandler interface {
 	// to the begin offset version of the eventlog.
 	ProjectionVersion(
 		context.Context,
-		Transaction,
+		TransactionReader,
 	) (EventlogVersion, error)
 
 	// ApplyEventTicketClosed applies event TicketClosed to the projection.
@@ -510,7 +523,7 @@ type ServiceTicketsStoreHandler interface {
 	// to the one that is provided.
 	ApplyEventTicketClosed(
 		context.Context,
-		Transaction,
+		TransactionWriter,
 		EventlogVersion,
 		time.Time,
 		EventTicketClosed,
@@ -521,7 +534,7 @@ type ServiceTicketsStoreHandler interface {
 	// to the one that is provided.
 	ApplyEventTicketCommented(
 		context.Context,
-		Transaction,
+		TransactionWriter,
 		EventlogVersion,
 		time.Time,
 		EventTicketCommented,
@@ -532,7 +545,7 @@ type ServiceTicketsStoreHandler interface {
 	// to the one that is provided.
 	ApplyEventTicketCreated(
 		context.Context,
-		Transaction,
+		TransactionWriter,
 		EventlogVersion,
 		time.Time,
 		EventTicketCreated,
@@ -543,7 +556,7 @@ type ServiceTicketsStoreHandler interface {
 	// to the one that is provided.
 	ApplyEventTicketDescriptionChanged(
 		context.Context,
-		Transaction,
+		TransactionWriter,
 		EventlogVersion,
 		time.Time,
 		EventTicketDescriptionChanged,
@@ -554,7 +567,7 @@ type ServiceTicketsStoreHandler interface {
 	// to the one that is provided.
 	ApplyEventTicketTitleChanged(
 		context.Context,
-		Transaction,
+		TransactionWriter,
 		EventlogVersion,
 		time.Time,
 		EventTicketTitleChanged,
@@ -565,7 +578,7 @@ type ServiceTicketsStoreHandler interface {
 	// to the one that is provided.
 	ApplyEventUserAssignedToTicket(
 		context.Context,
-		Transaction,
+		TransactionWriter,
 		EventlogVersion,
 		time.Time,
 		EventUserAssignedToTicket,
@@ -576,7 +589,7 @@ type ServiceTicketsStoreHandler interface {
 	// to the one that is provided.
 	ApplyEventUserUnassignedFromTicket(
 		context.Context,
-		Transaction,
+		TransactionWriter,
 		EventlogVersion,
 		time.Time,
 		EventUserUnassignedFromTicket,
@@ -595,8 +608,8 @@ type ServiceTicketsMethodCaller interface {
 	// and shall only be used for queries and mutations.
 	AssignUserToTicket(
 		context.Context,
-		Transaction,
-		srctickets.AssignUserToTicket,
+		TransactionReader,
+		srcticketsserviceticketsio.AssignUserToTicketIn,
 	) (
 		// No output
 		events []Event,
@@ -611,8 +624,8 @@ type ServiceTicketsMethodCaller interface {
 	// and shall only be used for queries and mutations.
 	CloseTicket(
 		context.Context,
-		Transaction,
-		srctickets.CloseTicketIn,
+		TransactionReader,
+		srcticketsserviceticketsio.CloseTicketIn,
 	) (
 		// No output
 		events []Event,
@@ -627,10 +640,10 @@ type ServiceTicketsMethodCaller interface {
 	// and shall only be used for queries and mutations.
 	CreateComment(
 		context.Context,
-		Transaction,
-		srctickets.CreateCommentIn,
+		TransactionReader,
+		srcticketsserviceticketsio.CreateCommentIn,
 	) (
-		// No output
+		output srcticketsserviceticketsio.CreateCommentOut,
 		events []Event,
 		err error,
 	)
@@ -643,10 +656,10 @@ type ServiceTicketsMethodCaller interface {
 	// and shall only be used for queries and mutations.
 	CreateTicket(
 		context.Context,
-		Transaction,
-		srctickets.CreateTicketIn,
+		TransactionReader,
+		srcticketsserviceticketsio.CreateTicketIn,
 	) (
-		output srctickets.CreateTicketOut,
+		output srcticketsserviceticketsio.CreateTicketOut,
 		events []Event,
 		err error,
 	)
@@ -659,24 +672,24 @@ type ServiceTicketsMethodCaller interface {
 	// and shall only be used for queries and mutations.
 	GetTicketByID(
 		context.Context,
-		Transaction,
-		srcticketsid.TicketID,
+		TransactionReader,
+		srcticketsid.Ticket,
 	) (
-		output srctickets.GetTicketByIDOut,
+		output srcticketsserviceticketsio.GetTicketByIDOut,
 		// No events
 		err error,
 	)
 
-	// UnassigneUserFromTicket represents method Tickets.UnassigneUserFromTicket
+	// UnassignUserFromTicket represents method Tickets.UnassignUserFromTicket
 	//
 	// WARNING: this method is read-only and must not mutate neither
 	// the state of the projection nor the projection version!
 	// The provided transaction must not be committed or rolled back
 	// and shall only be used for queries and mutations.
-	UnassigneUserFromTicket(
+	UnassignUserFromTicket(
 		context.Context,
-		Transaction,
-		srctickets.UnassigneUserFromTicketIn,
+		TransactionReader,
+		srcticketsserviceticketsio.UnassignUserFromTicketIn,
 	) (
 		// No output
 		events []Event,
@@ -691,8 +704,8 @@ type ServiceTicketsMethodCaller interface {
 	// and shall only be used for queries and mutations.
 	UpdateTicket(
 		context.Context,
-		Transaction,
-		srctickets.UpdateTicketIn,
+		TransactionReader,
+		srcticketsserviceticketsio.UpdateTicketIn,
 	) (
 		// No output
 		events []Event,
@@ -732,7 +745,7 @@ func (s *ServiceTickets) ProjectionVersion(ctx context.Context) (
 	EventlogVersion,
 	error,
 ) {
-	txn := s.store.NewTransactionReadOnly()
+	txn := s.store.NewTransactionReader()
 	defer txn.Complete()
 
 	return s.projectionVersion(ctx, txn)
@@ -740,7 +753,7 @@ func (s *ServiceTickets) ProjectionVersion(ctx context.Context) (
 
 func (s *ServiceTickets) projectionVersion(
 	ctx context.Context,
-	txn Transaction,
+	txn TransactionReader,
 ) (
 	EventlogVersion,
 	error,
@@ -773,7 +786,7 @@ func (s *ServiceTickets) Sync(
 	latestVersion EventlogVersion,
 	err error,
 ) {
-	txn := s.store.NewTransactionReadWrite()
+	txn := s.store.NewTransactionReadWriter()
 	defer func() {
 		if err == nil ||
 			errors.Is(err, context.Canceled) ||
@@ -790,7 +803,7 @@ func (s *ServiceTickets) Sync(
 
 func (s *ServiceTickets) sync(
 	ctx context.Context,
-	trx Transaction,
+	trx TransactionWriter,
 ) (
 	latestVersion EventlogVersion,
 	err error,
@@ -878,14 +891,14 @@ func (s *ServiceTickets) sync(
 
 func (s *ServiceTickets) AssignUserToTicket(
 	ctx context.Context,
-	input srctickets.AssignUserToTicket,
+	input srcticketsserviceticketsio.AssignUserToTicketIn,
 ) (
 	// No output
 	events []Event,
 	eventsPushTime time.Time,
 	err error,
 ) {
-	txn := s.store.NewTransactionReadWrite()
+	txn := s.store.NewTransactionReadWriter()
 	defer func() {
 		if err == nil ||
 			errors.Is(err, context.Canceled) ||
@@ -933,7 +946,7 @@ func (s *ServiceTickets) AssignUserToTicket(
 	}
 
 	var currentVersion EventlogVersion
-	currentVersion, err = s.ProjectionVersion(ctx)
+	currentVersion, err = s.projectionVersion(ctx, txn)
 	if err != nil {
 		return
 	}
@@ -955,14 +968,14 @@ func (s *ServiceTickets) AssignUserToTicket(
 
 func (s *ServiceTickets) CloseTicket(
 	ctx context.Context,
-	input srctickets.CloseTicketIn,
+	input srcticketsserviceticketsio.CloseTicketIn,
 ) (
 	// No output
 	events []Event,
 	eventsPushTime time.Time,
 	err error,
 ) {
-	txn := s.store.NewTransactionReadWrite()
+	txn := s.store.NewTransactionReadWriter()
 	defer func() {
 		if err == nil ||
 			errors.Is(err, context.Canceled) ||
@@ -1010,7 +1023,7 @@ func (s *ServiceTickets) CloseTicket(
 	}
 
 	var currentVersion EventlogVersion
-	currentVersion, err = s.ProjectionVersion(ctx)
+	currentVersion, err = s.projectionVersion(ctx, txn)
 	if err != nil {
 		return
 	}
@@ -1032,14 +1045,14 @@ func (s *ServiceTickets) CloseTicket(
 
 func (s *ServiceTickets) CreateComment(
 	ctx context.Context,
-	input srctickets.CreateCommentIn,
+	input srcticketsserviceticketsio.CreateCommentIn,
 ) (
-	// No output
+	output srcticketsserviceticketsio.CreateCommentOut,
 	events []Event,
 	eventsPushTime time.Time,
 	err error,
 ) {
-	txn := s.store.NewTransactionReadWrite()
+	txn := s.store.NewTransactionReadWriter()
 	defer func() {
 		if err == nil ||
 			errors.Is(err, context.Canceled) ||
@@ -1050,11 +1063,12 @@ func (s *ServiceTickets) CreateComment(
 		}
 	}()
 
+	var outZero srcticketsserviceticketsio.CreateCommentOut
 	var eventsJSON []byte
 
 	defer func() {
 		if err != nil {
-			// No output to reset
+			output = outZero
 			events = nil
 			eventsJSON = nil
 			eventsPushTime = time.Time{}
@@ -1062,7 +1076,7 @@ func (s *ServiceTickets) CreateComment(
 	}()
 
 	exec := func() (ok bool) {
-		events, err = s.methods.CreateComment(ctx, txn, input)
+		output, events, err = s.methods.CreateComment(ctx, txn, input)
 		if err != nil {
 			return false
 		}
@@ -1087,7 +1101,7 @@ func (s *ServiceTickets) CreateComment(
 	}
 
 	var currentVersion EventlogVersion
-	currentVersion, err = s.ProjectionVersion(ctx)
+	currentVersion, err = s.projectionVersion(ctx, txn)
 	if err != nil {
 		return
 	}
@@ -1109,14 +1123,14 @@ func (s *ServiceTickets) CreateComment(
 
 func (s *ServiceTickets) CreateTicket(
 	ctx context.Context,
-	input srctickets.CreateTicketIn,
+	input srcticketsserviceticketsio.CreateTicketIn,
 ) (
-	output srctickets.CreateTicketOut,
+	output srcticketsserviceticketsio.CreateTicketOut,
 	events []Event,
 	eventsPushTime time.Time,
 	err error,
 ) {
-	txn := s.store.NewTransactionReadWrite()
+	txn := s.store.NewTransactionReadWriter()
 	defer func() {
 		if err == nil ||
 			errors.Is(err, context.Canceled) ||
@@ -1127,7 +1141,7 @@ func (s *ServiceTickets) CreateTicket(
 		}
 	}()
 
-	var outZero srctickets.CreateTicketOut
+	var outZero srcticketsserviceticketsio.CreateTicketOut
 	var eventsJSON []byte
 
 	defer func() {
@@ -1165,7 +1179,7 @@ func (s *ServiceTickets) CreateTicket(
 	}
 
 	var currentVersion EventlogVersion
-	currentVersion, err = s.ProjectionVersion(ctx)
+	currentVersion, err = s.projectionVersion(ctx, txn)
 	if err != nil {
 		return
 	}
@@ -1187,16 +1201,16 @@ func (s *ServiceTickets) CreateTicket(
 
 func (s *ServiceTickets) GetTicketByID(
 	ctx context.Context,
-	input srcticketsid.TicketID,
+	input srcticketsid.Ticket,
 ) (
-	output srctickets.GetTicketByIDOut,
+	output srcticketsserviceticketsio.GetTicketByIDOut,
 	// No events
 	err error,
 ) {
-	txn := s.store.NewTransactionReadOnly()
+	txn := s.store.NewTransactionReader()
 	defer txn.Complete()
 
-	var outZero srctickets.GetTicketByIDOut
+	var outZero srcticketsserviceticketsio.GetTicketByIDOut
 
 	defer func() {
 		if err != nil {
@@ -1219,16 +1233,16 @@ func (s *ServiceTickets) GetTicketByID(
 	return
 }
 
-func (s *ServiceTickets) UnassigneUserFromTicket(
+func (s *ServiceTickets) UnassignUserFromTicket(
 	ctx context.Context,
-	input srctickets.UnassigneUserFromTicketIn,
+	input srcticketsserviceticketsio.UnassignUserFromTicketIn,
 ) (
 	// No output
 	events []Event,
 	eventsPushTime time.Time,
 	err error,
 ) {
-	txn := s.store.NewTransactionReadWrite()
+	txn := s.store.NewTransactionReadWriter()
 	defer func() {
 		if err == nil ||
 			errors.Is(err, context.Canceled) ||
@@ -1251,7 +1265,7 @@ func (s *ServiceTickets) UnassigneUserFromTicket(
 	}()
 
 	exec := func() (ok bool) {
-		events, err = s.methods.UnassigneUserFromTicket(ctx, txn, input)
+		events, err = s.methods.UnassignUserFromTicket(ctx, txn, input)
 		if err != nil {
 			return false
 		}
@@ -1264,7 +1278,7 @@ func (s *ServiceTickets) UnassigneUserFromTicket(
 			case EventUserUnassignedFromTicket:
 			default:
 				panic(fmt.Errorf(
-					"method Tickets.UnassigneUserFromTicket is not allowed to emit event %s",
+					"method Tickets.UnassignUserFromTicket is not allowed to emit event %s",
 					reflect.TypeOf(e),
 				))
 			}
@@ -1276,7 +1290,7 @@ func (s *ServiceTickets) UnassigneUserFromTicket(
 	}
 
 	var currentVersion EventlogVersion
-	currentVersion, err = s.ProjectionVersion(ctx)
+	currentVersion, err = s.projectionVersion(ctx, txn)
 	if err != nil {
 		return
 	}
@@ -1298,14 +1312,14 @@ func (s *ServiceTickets) UnassigneUserFromTicket(
 
 func (s *ServiceTickets) UpdateTicket(
 	ctx context.Context,
-	input srctickets.UpdateTicketIn,
+	input srcticketsserviceticketsio.UpdateTicketIn,
 ) (
 	// No output
 	events []Event,
 	eventsPushTime time.Time,
 	err error,
 ) {
-	txn := s.store.NewTransactionReadWrite()
+	txn := s.store.NewTransactionReadWriter()
 	defer func() {
 		if err == nil ||
 			errors.Is(err, context.Canceled) ||
@@ -1354,7 +1368,7 @@ func (s *ServiceTickets) UpdateTicket(
 	}
 
 	var currentVersion EventlogVersion
-	currentVersion, err = s.ProjectionVersion(ctx)
+	currentVersion, err = s.projectionVersion(ctx, txn)
 	if err != nil {
 		return
 	}

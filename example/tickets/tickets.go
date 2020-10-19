@@ -1,56 +1,23 @@
 package tickets
 
-import (
-	"tickets/domain/tickettitle"
-	"tickets/id"
-)
+import "fmt"
 
 type (
 	TicketDescription    string
 	TicketCommentMessage string
+	TicketTitle          string
 )
 
-type (
-	GetTicketByIDOut struct {
-		ID          id.TicketID
-		Title       tickettitle.TicketTitle
-		Description TicketDescription
-		Author      id.UserID
-		Assignees   []id.UserID
+func ValidateTicketTitle(v TicketTitle) error {
+	if v == "" {
+		return fmt.Errorf("empty")
 	}
-	CreateTicketIn struct {
-		Title       tickettitle.TicketTitle
-		Description TicketDescription
-		Author      id.UserID
+	return nil
+}
+
+func ValidateCommentMessage(v TicketCommentMessage) error {
+	if v == "" {
+		return fmt.Errorf("empty")
 	}
-	CreateTicketOut struct {
-		ID          id.TicketID
-		Title       tickettitle.TicketTitle
-		Description TicketDescription
-		Author      id.UserID
-	}
-	AssignUserToTicket struct {
-		Ticket id.TicketID
-		By     id.UserID
-	}
-	CloseTicketIn struct {
-		Ticket id.TicketID
-		By     id.UserID
-	}
-	CreateCommentIn struct {
-		Ticket  id.TicketID
-		Message TicketCommentMessage
-		By      id.UserID
-	}
-	UnassigneUserFromTicketIn struct {
-		User   id.UserID
-		Ticket id.TicketID
-		By     id.UserID
-	}
-	UpdateTicketIn struct {
-		Ticket         id.TicketID
-		NewDescription *TicketDescription
-		NewTitle       *tickettitle.TicketTitle
-		By             id.UserID
-	}
-)
+	return nil
+}
