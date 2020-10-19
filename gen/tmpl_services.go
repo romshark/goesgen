@@ -64,23 +64,28 @@ type EventLogger interface {
 	)
 }
 
-// TransactionReadOnly represents an abstract
-// read-only (shared locking) transaction handler
-type TransactionReadOnly interface {
-	Complete()
-}
-
-// TransactionReadWrite represents an abstract
-// read-write (excluive locking) transaction handler
-type TransactionReadWrite interface {
+// StoreTransactionReadWriter represents an abstract
+// read-write (exclusive locking) store transaction handler
+type StoreTransactionReadWriter interface {
 	Commit()
 	Rollback()
 }
 
-// Transaction represents an arbitrary abstract transaction object
-// that's supposed to be used for queries and mutations only.
-// Transaction must not be committed or rolled back!
-type Transaction = interface{}
+// StoreTransactionReader represents an abstract
+// read only (shared locking) store transaction handler
+type StoreTransactionReader interface {
+	Complete()
+}
+
+// TransactionWriter represents an arbitrary abstract transaction object
+// that's supposed to be used for write-only mutations.
+// TransactionWriter must not be committed or rolled back!
+type TransactionWriter = interface{}
+
+// TransactionReader represents an arbitrary abstract transaction object
+// that's supposed to be used for read-only queries.
+// TransactionReader must not be committed or rolled back!
+type TransactionReader = interface{}
 
 {{range $srvName, $s := $.Schema.Services}}
 {{with $srvType := $.ServiceType $srvName}}
@@ -100,15 +105,16 @@ type {{$srvType}} struct {
 // {{$srvType}}StoreHandler represents a store handler implementation
 // of the service {{$srvName}}
 type {{$srvType}}StoreHandler interface {
-	// NewTransactionReadWrite creates a new exclusive read-write transaction.
+	// NewTransactionReadWriter creates a new exclusive
+	// read-write transaction handler.
 	// The returned transaction is passed to implementation methods
 	// and will eventually be either committed or rolled back respectively.
-	NewTransactionReadWrite() TransactionReadWrite
+	NewTransactionReadWriter() StoreTransactionReadWriter
 
-	// NewTransactionReadOnly creates a new read-only transaction.
+	// NewTransactionReader creates a new read-only transaction handler.
 	// The returned transaction is passed to implementation methods
 	// and will eventually be completed.
-	NewTransactionReadOnly() TransactionReadOnly
+	NewTransactionReader() StoreTransactionReader
 
 	// ProjectionVersion returns the current projection version.
 	// Returns an empty string if the projection wasn't initialized yet.
@@ -116,7 +122,7 @@ type {{$srvType}}StoreHandler interface {
 	// to the begin offset version of the eventlog.
 	ProjectionVersion(
 		context.Context,
-		Transaction,
+		TransactionReader,
 	) (EventlogVersion, error)
 	
 	{{range $e := $s.Subscriptions}}
@@ -125,7 +131,7 @@ type {{$srvType}}StoreHandler interface {
 	// to the one that is provided.
 	Apply{{$.EventType $e.Name}} (
 		context.Context,
-		Transaction,
+		TransactionWriter,
 		EventlogVersion,
 		time.Time,
 		{{$.EventType $e.Name}},
@@ -148,7 +154,7 @@ type {{$srvType}}MethodCaller interface {
 	// and shall only be used for queries and mutations.
 	{{$mn}}(
 		context.Context,
-		Transaction,
+		TransactionReader,
 		{{if $m.Input -}}
 		{{$.TypeID $m.Input}},
 		{{- else -}}
@@ -202,7 +208,7 @@ func (s *{{$srvType}}) ProjectionVersion(ctx context.Context) (
 	EventlogVersion,
 	error,
 ) {
-	txn := s.store.NewTransactionReadOnly()
+	txn := s.store.NewTransactionReader()
 	defer txn.Complete()
 
 	return s.projectionVersion(ctx, txn)
@@ -210,7 +216,7 @@ func (s *{{$srvType}}) ProjectionVersion(ctx context.Context) (
 
 func (s *{{$srvType}}) projectionVersion(
 	ctx context.Context,
-	txn Transaction,
+	txn TransactionReader,
 ) (
 	EventlogVersion,
 	error,
@@ -243,7 +249,7 @@ func (s *{{$srvType}}) Sync(
 	latestVersion EventlogVersion,
 	err error,
 ) {
-	txn := s.store.NewTransactionReadWrite()
+	txn := s.store.NewTransactionReadWriter()
 	defer func() {
 		if err == nil ||
 			errors.Is(err, context.Canceled) ||
@@ -260,7 +266,7 @@ func (s *{{$srvType}}) Sync(
 
 func (s *{{$srvType}}) sync(
 	ctx context.Context,
-	trx Transaction,
+	trx TransactionWriter,
 ) (
 	latestVersion EventlogVersion,
 	err error,
@@ -331,7 +337,7 @@ func (s *{{$srvType}}) {{$mn}}(
 	err error,
 ) {
 	{{- if eq $m.Type "transaction"}}
-	txn := s.store.NewTransactionReadWrite()
+	txn := s.store.NewTransactionReadWriter()
 	defer func() {
 		if err == nil ||
 			errors.Is(err, context.Canceled) ||
@@ -342,7 +348,7 @@ func (s *{{$srvType}}) {{$mn}}(
 		}
 	}()
 	{{else}}
-	txn := s.store.NewTransactionReadOnly()
+	txn := s.store.NewTransactionReader()
 	defer txn.Complete()
 	{{end}}
 
@@ -418,7 +424,7 @@ func (s *{{$srvType}}) {{$mn}}(
 	_, _, eventsPushTime, err = s.eventlog.AppendJSON(ctx, eventsJSON)
 	{{- else if eq $m.Type "transaction" -}}
 	var currentVersion EventlogVersion
-	currentVersion, err = s.ProjectionVersion(ctx)
+	currentVersion, err = s.projectionVersion(ctx, txn)
 	if err != nil {
 		return
 	}
