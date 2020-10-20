@@ -30,8 +30,16 @@
     ticket: id.Ticket
     newTitle: TicketTitle
     by: id.User
+  UserCreated:
+    id: id.User
+    name: UserName
 
 projections:
+  User:
+    states:
+      - New
+    createOn: UserCreated
+
   Ticket:
     states:
       - New
@@ -65,9 +73,23 @@ projections:
         - Stalled -> Stalled
 
 services:
+  Users:
+    projections:
+      - User
+    methods:
+      GetUserByID:
+        in: id.User
+        out: service.users.io.GetUserByIDOut
+      CreateUser:
+        in: service.users.io.CreateUserIn
+        out: service.users.io.CreateUserOut
+        emits:
+          - UserCreated
+
   Tickets:
     projections:
       - Ticket
+      - User
     methods:
       GetTicketByID:
         in: id.Ticket
@@ -118,6 +140,7 @@ import (
 	srctickets "tickets"
 	srcticketsid "tickets/id"
 	srcticketsserviceticketsio "tickets/service/tickets/io"
+	srcticketsserviceusersio "tickets/service/users/io"
 )
 
 type Logger interface {
@@ -141,6 +164,7 @@ var defaultLogErr = &fallbackLog{os.Stderr}
 //  EventTicketDescriptionChanged
 //  EventTicketTitleChanged
 //  EventUserAssignedToTicket
+//  EventUserCreated
 //  EventUserUnassignedFromTicket
 type Event = interface{}
 
@@ -200,6 +224,13 @@ type EventUserAssignedToTicket struct {
 	By srcticketsid.User "json:\"by\""
 }
 
+// EventUserCreated defines event UserCreated
+type EventUserCreated struct {
+	Id srcticketsid.User "json:\"id\""
+
+	Name srctickets.UserName "json:\"name\""
+}
+
 // EventUserUnassignedFromTicket defines event UserUnassignedFromTicket
 type EventUserUnassignedFromTicket struct {
 	User srcticketsid.User "json:\"user\""
@@ -225,6 +256,8 @@ func GetEventTypeName(e Event) string {
 		return "TicketTitleChanged"
 	case EventUserAssignedToTicket:
 		return "UserAssignedToTicket"
+	case EventUserCreated:
+		return "UserCreated"
 	case EventUserUnassignedFromTicket:
 		return "UserUnassignedFromTicket"
 	}
@@ -345,6 +378,15 @@ func DecodeEventJSON(b []byte) (Event, error) {
 			))
 		}
 		return e, nil
+	case "UserCreated":
+		var e EventUserCreated
+		if err := json.Unmarshal(v.Payload, &e); err != nil {
+			return nil, DecodingEventErr(fmt.Sprintf(
+				"decoding UserCreated payload: %s",
+				err,
+			))
+		}
+		return e, nil
 	case "UserUnassignedFromTicket":
 		var e EventUserUnassignedFromTicket
 		if err := json.Unmarshal(v.Payload, &e); err != nil {
@@ -393,7 +435,50 @@ func (p ProjectionTicket) State() ProjectionTicketState {
 	return p.state
 }
 
+type ProjectionUserState string
+
+const (
+	ProjectionUserStateNew ProjectionUserState = "New"
+)
+
+type ProjectionUser struct {
+	state ProjectionUserState
+}
+
+func NewProjectionUser() ProjectionUser {
+	return ProjectionUser{
+		state: ProjectionUserStateNew,
+	}
+}
+
+func (p ProjectionUser) State() ProjectionUserState {
+	return p.state
+}
+
 /* SERVICES */
+
+type ServiceOptions struct {
+	// SyncAfterPush will synchronize a service against the event log
+	// after a successful push of events.
+	//
+	// SyncAfterPush is enabled by default.
+	SyncAfterPush Option
+}
+
+type Option int
+
+const (
+	Unspecified Option = 0
+	Disabled    Option = -1
+	Enabled     Option = 1
+)
+
+// SetDefaults sets default values to unspecified options
+func (o *ServiceOptions) SetDefaults() {
+	if o.SyncAfterPush == Unspecified {
+		o.SyncAfterPush = Enabled
+	}
+}
 
 type EventlogVersion = string
 
@@ -480,19 +565,20 @@ type TransactionWriter = interface{}
 type TransactionReader = interface{}
 
 // ServiceTickets projects the following entities:
-//  Ticket
+//  Ticket//  User
 // therefore, Tickets subscribes to the following events:
+//  TicketDescriptionChanged
+//  TicketTitleChanged
 //  TicketClosed
 //  TicketCommented
 //  UserAssignedToTicket
 //  UserUnassignedFromTicket
-//  TicketDescriptionChanged
-//  TicketTitleChanged
 type ServiceTickets struct {
 	eventlog EventLogger
 	logErr   Logger
 	methods  ServiceTicketsMethodCaller
 	store    ServiceTicketsStoreHandler
+	options  ServiceOptions
 }
 
 // ServiceTicketsStoreHandler represents a store handler implementation
@@ -518,9 +604,17 @@ type ServiceTicketsStoreHandler interface {
 		TransactionReader,
 	) (EventlogVersion, error)
 
+	// UpdateProjectionVersion explicitly sets the
+	// projection version of the store
+	UpdateProjectionVersion(
+		context.Context,
+		TransactionWriter,
+		EventlogVersion,
+	) error
+
 	// ApplyEventTicketClosed applies event TicketClosed to the projection.
-	// The projection must update its local projection version
-	// to the one that is provided.
+	// The given projection version doesn't need to be applied,
+	// it will be applied in a separate call to UpdateProjectionVersion.
 	ApplyEventTicketClosed(
 		context.Context,
 		TransactionWriter,
@@ -530,8 +624,8 @@ type ServiceTicketsStoreHandler interface {
 	) error
 
 	// ApplyEventTicketCommented applies event TicketCommented to the projection.
-	// The projection must update its local projection version
-	// to the one that is provided.
+	// The given projection version doesn't need to be applied,
+	// it will be applied in a separate call to UpdateProjectionVersion.
 	ApplyEventTicketCommented(
 		context.Context,
 		TransactionWriter,
@@ -541,8 +635,8 @@ type ServiceTicketsStoreHandler interface {
 	) error
 
 	// ApplyEventTicketCreated applies event TicketCreated to the projection.
-	// The projection must update its local projection version
-	// to the one that is provided.
+	// The given projection version doesn't need to be applied,
+	// it will be applied in a separate call to UpdateProjectionVersion.
 	ApplyEventTicketCreated(
 		context.Context,
 		TransactionWriter,
@@ -552,8 +646,8 @@ type ServiceTicketsStoreHandler interface {
 	) error
 
 	// ApplyEventTicketDescriptionChanged applies event TicketDescriptionChanged to the projection.
-	// The projection must update its local projection version
-	// to the one that is provided.
+	// The given projection version doesn't need to be applied,
+	// it will be applied in a separate call to UpdateProjectionVersion.
 	ApplyEventTicketDescriptionChanged(
 		context.Context,
 		TransactionWriter,
@@ -563,8 +657,8 @@ type ServiceTicketsStoreHandler interface {
 	) error
 
 	// ApplyEventTicketTitleChanged applies event TicketTitleChanged to the projection.
-	// The projection must update its local projection version
-	// to the one that is provided.
+	// The given projection version doesn't need to be applied,
+	// it will be applied in a separate call to UpdateProjectionVersion.
 	ApplyEventTicketTitleChanged(
 		context.Context,
 		TransactionWriter,
@@ -574,8 +668,8 @@ type ServiceTicketsStoreHandler interface {
 	) error
 
 	// ApplyEventUserAssignedToTicket applies event UserAssignedToTicket to the projection.
-	// The projection must update its local projection version
-	// to the one that is provided.
+	// The given projection version doesn't need to be applied,
+	// it will be applied in a separate call to UpdateProjectionVersion.
 	ApplyEventUserAssignedToTicket(
 		context.Context,
 		TransactionWriter,
@@ -584,9 +678,20 @@ type ServiceTicketsStoreHandler interface {
 		EventUserAssignedToTicket,
 	) error
 
+	// ApplyEventUserCreated applies event UserCreated to the projection.
+	// The given projection version doesn't need to be applied,
+	// it will be applied in a separate call to UpdateProjectionVersion.
+	ApplyEventUserCreated(
+		context.Context,
+		TransactionWriter,
+		EventlogVersion,
+		time.Time,
+		EventUserCreated,
+	) error
+
 	// ApplyEventUserUnassignedFromTicket applies event UserUnassignedFromTicket to the projection.
-	// The projection must update its local projection version
-	// to the one that is provided.
+	// The given projection version doesn't need to be applied,
+	// it will be applied in a separate call to UpdateProjectionVersion.
 	ApplyEventUserUnassignedFromTicket(
 		context.Context,
 		TransactionWriter,
@@ -719,6 +824,7 @@ func NewServiceTickets(
 	storeHandler ServiceTicketsStoreHandler,
 	eventLogger EventLogger,
 	errorLogger Logger,
+	options ServiceOptions,
 ) *ServiceTickets {
 	if methodCaller == nil {
 		panic("methodCaller is nil in NewServiceTickets")
@@ -732,11 +838,13 @@ func NewServiceTickets(
 	if errorLogger == nil {
 		errorLogger = defaultLogErr
 	}
+	options.SetDefaults()
 	return &ServiceTickets{
 		methods:  methodCaller,
 		store:    storeHandler,
 		eventlog: eventLogger,
 		logErr:   errorLogger,
+		options:  options,
 	}
 }
 
@@ -813,6 +921,17 @@ func (s *ServiceTickets) sync(
 		return "", err
 	}
 
+	var appliedVersion EventlogVersion
+	defer func() {
+		if appliedVersion == latestVersion {
+			return
+		}
+		err = s.store.UpdateProjectionVersion(ctx, trx, latestVersion)
+		if err != nil {
+			latestVersion = appliedVersion
+		}
+	}()
+
 	if err := s.eventlog.Scan(
 		ctx,
 		initialVersion,
@@ -834,50 +953,98 @@ func (s *ServiceTickets) sync(
 				); err != nil {
 					return err
 				}
-				latestVersion = next
+				if err := s.store.UpdateProjectionVersion(
+					ctx, trx, next,
+				); err != nil {
+					return err
+				}
+				appliedVersion = next
 			case EventTicketCommented:
 				if err := s.store.ApplyEventTicketCommented(
 					ctx, trx, next, tm, v,
 				); err != nil {
 					return err
 				}
-				latestVersion = next
+				if err := s.store.UpdateProjectionVersion(
+					ctx, trx, next,
+				); err != nil {
+					return err
+				}
+				appliedVersion = next
 			case EventTicketCreated:
 				if err := s.store.ApplyEventTicketCreated(
 					ctx, trx, next, tm, v,
 				); err != nil {
 					return err
 				}
-				latestVersion = next
+				if err := s.store.UpdateProjectionVersion(
+					ctx, trx, next,
+				); err != nil {
+					return err
+				}
+				appliedVersion = next
 			case EventTicketDescriptionChanged:
 				if err := s.store.ApplyEventTicketDescriptionChanged(
 					ctx, trx, next, tm, v,
 				); err != nil {
 					return err
 				}
-				latestVersion = next
+				if err := s.store.UpdateProjectionVersion(
+					ctx, trx, next,
+				); err != nil {
+					return err
+				}
+				appliedVersion = next
 			case EventTicketTitleChanged:
 				if err := s.store.ApplyEventTicketTitleChanged(
 					ctx, trx, next, tm, v,
 				); err != nil {
 					return err
 				}
-				latestVersion = next
+				if err := s.store.UpdateProjectionVersion(
+					ctx, trx, next,
+				); err != nil {
+					return err
+				}
+				appliedVersion = next
 			case EventUserAssignedToTicket:
 				if err := s.store.ApplyEventUserAssignedToTicket(
 					ctx, trx, next, tm, v,
 				); err != nil {
 					return err
 				}
-				latestVersion = next
+				if err := s.store.UpdateProjectionVersion(
+					ctx, trx, next,
+				); err != nil {
+					return err
+				}
+				appliedVersion = next
+			case EventUserCreated:
+				if err := s.store.ApplyEventUserCreated(
+					ctx, trx, next, tm, v,
+				); err != nil {
+					return err
+				}
+				if err := s.store.UpdateProjectionVersion(
+					ctx, trx, next,
+				); err != nil {
+					return err
+				}
+				appliedVersion = next
 			case EventUserUnassignedFromTicket:
 				if err := s.store.ApplyEventUserUnassignedFromTicket(
 					ctx, trx, next, tm, v,
 				); err != nil {
 					return err
 				}
-				latestVersion = next
+				if err := s.store.UpdateProjectionVersion(
+					ctx, trx, next,
+				); err != nil {
+					return err
+				}
+				appliedVersion = next
 			}
+			latestVersion = next
 			return nil
 		},
 	); err != nil {
@@ -963,6 +1130,13 @@ func (s *ServiceTickets) AssignUserToTicket(
 		func() (EventlogVersion, error) { return s.sync(ctx, txn) },
 	)
 
+	if err != nil {
+		return
+	}
+	if s.options.SyncAfterPush == Enabled && len(events) > 0 {
+		_, err = s.sync(ctx, txn)
+	}
+
 	return
 }
 
@@ -1039,6 +1213,13 @@ func (s *ServiceTickets) CloseTicket(
 		},
 		func() (EventlogVersion, error) { return s.sync(ctx, txn) },
 	)
+
+	if err != nil {
+		return
+	}
+	if s.options.SyncAfterPush == Enabled && len(events) > 0 {
+		_, err = s.sync(ctx, txn)
+	}
 
 	return
 }
@@ -1118,6 +1299,13 @@ func (s *ServiceTickets) CreateComment(
 		func() (EventlogVersion, error) { return s.sync(ctx, txn) },
 	)
 
+	if err != nil {
+		return
+	}
+	if s.options.SyncAfterPush == Enabled && len(events) > 0 {
+		_, err = s.sync(ctx, txn)
+	}
+
 	return
 }
 
@@ -1195,6 +1383,13 @@ func (s *ServiceTickets) CreateTicket(
 		},
 		func() (EventlogVersion, error) { return s.sync(ctx, txn) },
 	)
+
+	if err != nil {
+		return
+	}
+	if s.options.SyncAfterPush == Enabled && len(events) > 0 {
+		_, err = s.sync(ctx, txn)
+	}
 
 	return
 }
@@ -1307,6 +1502,13 @@ func (s *ServiceTickets) UnassignUserFromTicket(
 		func() (EventlogVersion, error) { return s.sync(ctx, txn) },
 	)
 
+	if err != nil {
+		return
+	}
+	if s.options.SyncAfterPush == Enabled && len(events) > 0 {
+		_, err = s.sync(ctx, txn)
+	}
+
 	return
 }
 
@@ -1384,6 +1586,377 @@ func (s *ServiceTickets) UpdateTicket(
 		},
 		func() (EventlogVersion, error) { return s.sync(ctx, txn) },
 	)
+
+	if err != nil {
+		return
+	}
+	if s.options.SyncAfterPush == Enabled && len(events) > 0 {
+		_, err = s.sync(ctx, txn)
+	}
+
+	return
+}
+
+// ServiceUsers projects the following entities:
+//  User
+// therefore, Users subscribes to the following events:
+type ServiceUsers struct {
+	eventlog EventLogger
+	logErr   Logger
+	methods  ServiceUsersMethodCaller
+	store    ServiceUsersStoreHandler
+	options  ServiceOptions
+}
+
+// ServiceUsersStoreHandler represents a store handler implementation
+// of the service Users
+type ServiceUsersStoreHandler interface {
+	// NewTransactionReadWriter creates a new exclusive
+	// read-write transaction handler.
+	// The returned transaction is passed to implementation methods
+	// and will eventually be either committed or rolled back respectively.
+	NewTransactionReadWriter() StoreTransactionReadWriter
+
+	// NewTransactionReader creates a new read-only transaction handler.
+	// The returned transaction is passed to implementation methods
+	// and will eventually be completed.
+	NewTransactionReader() StoreTransactionReader
+
+	// ProjectionVersion returns the current projection version.
+	// Returns an empty string if the projection wasn't initialized yet.
+	// In case an empty string is returned the service will fallback
+	// to the begin offset version of the eventlog.
+	ProjectionVersion(
+		context.Context,
+		TransactionReader,
+	) (EventlogVersion, error)
+
+	// UpdateProjectionVersion explicitly sets the
+	// projection version of the store
+	UpdateProjectionVersion(
+		context.Context,
+		TransactionWriter,
+		EventlogVersion,
+	) error
+
+	// ApplyEventUserCreated applies event UserCreated to the projection.
+	// The given projection version doesn't need to be applied,
+	// it will be applied in a separate call to UpdateProjectionVersion.
+	ApplyEventUserCreated(
+		context.Context,
+		TransactionWriter,
+		EventlogVersion,
+		time.Time,
+		EventUserCreated,
+	) error
+}
+
+// ServiceUsersMethodCaller represents an implementation
+// of the service Users
+type ServiceUsersMethodCaller interface {
+
+	// CreateUser represents method Users.CreateUser
+	//
+	// WARNING: this method is read-only and must not mutate neither
+	// the state of the projection nor the projection version!
+	// The provided transaction must not be committed or rolled back
+	// and shall only be used for queries and mutations.
+	CreateUser(
+		context.Context,
+		TransactionReader,
+		srcticketsserviceusersio.CreateUserIn,
+	) (
+		output srcticketsserviceusersio.CreateUserOut,
+		events []Event,
+		err error,
+	)
+
+	// GetUserByID represents method Users.GetUserByID
+	//
+	// WARNING: this method is read-only and must not mutate neither
+	// the state of the projection nor the projection version!
+	// The provided transaction must not be committed or rolled back
+	// and shall only be used for queries and mutations.
+	GetUserByID(
+		context.Context,
+		TransactionReader,
+		srcticketsid.User,
+	) (
+		output srcticketsserviceusersio.GetUserByIDOut,
+		// No events
+		err error,
+	)
+}
+
+// NewServiceUsers creates a new instance of the Users service.
+func NewServiceUsers(
+	methodCaller ServiceUsersMethodCaller,
+	storeHandler ServiceUsersStoreHandler,
+	eventLogger EventLogger,
+	errorLogger Logger,
+	options ServiceOptions,
+) *ServiceUsers {
+	if methodCaller == nil {
+		panic("methodCaller is nil in NewServiceUsers")
+	}
+	if storeHandler == nil {
+		panic("storeHandler is nil in NewServiceUsers")
+	}
+	if eventLogger == nil {
+		panic("eventLogger is nil in NewServiceUsers")
+	}
+	if errorLogger == nil {
+		errorLogger = defaultLogErr
+	}
+	options.SetDefaults()
+	return &ServiceUsers{
+		methods:  methodCaller,
+		store:    storeHandler,
+		eventlog: eventLogger,
+		logErr:   errorLogger,
+		options:  options,
+	}
+}
+
+// ProjectionVersion returns the current projection version
+func (s *ServiceUsers) ProjectionVersion(ctx context.Context) (
+	EventlogVersion,
+	error,
+) {
+	txn := s.store.NewTransactionReader()
+	defer txn.Complete()
+
+	return s.projectionVersion(ctx, txn)
+}
+
+func (s *ServiceUsers) projectionVersion(
+	ctx context.Context,
+	txn TransactionReader,
+) (
+	EventlogVersion,
+	error,
+) {
+	v, err := s.store.ProjectionVersion(ctx, txn)
+	if err != nil {
+		return "", fmt.Errorf("reading projection version: %w", err)
+	}
+	if v != "" {
+		return v, nil
+	}
+
+	// Fallback to the beginning of the eventlog
+	v, err = s.eventlog.Begin(ctx)
+	if err != nil {
+		return "", fmt.Errorf("reading begin offset version: %w", err)
+	}
+	return v, nil
+}
+
+// Sync synchronizes service Users against the eventlog.
+// Sync will scan events until it reaches the tip of the event log and
+// always return the latest version of the event log it managed to reach,
+// unless the returned error is not equal context.Canceled or
+// context.DeadlineExceeded and didn't pass isErrAcceptable (if not nil).
+func (s *ServiceUsers) Sync(
+	ctx context.Context,
+	isErrAcceptable func(error) bool,
+) (
+	latestVersion EventlogVersion,
+	err error,
+) {
+	txn := s.store.NewTransactionReadWriter()
+	defer func() {
+		if err == nil ||
+			errors.Is(err, context.Canceled) ||
+			errors.Is(err, context.DeadlineExceeded) ||
+			(isErrAcceptable != nil && isErrAcceptable(err)) {
+			txn.Commit()
+		} else {
+			txn.Rollback()
+		}
+	}()
+
+	return s.sync(ctx, txn)
+}
+
+func (s *ServiceUsers) sync(
+	ctx context.Context,
+	trx TransactionWriter,
+) (
+	latestVersion EventlogVersion,
+	err error,
+) {
+	initialVersion, err := s.projectionVersion(ctx, trx)
+	if err != nil {
+		return "", err
+	}
+
+	var appliedVersion EventlogVersion
+	defer func() {
+		if appliedVersion == latestVersion {
+			return
+		}
+		err = s.store.UpdateProjectionVersion(ctx, trx, latestVersion)
+		if err != nil {
+			latestVersion = appliedVersion
+		}
+	}()
+
+	if err := s.eventlog.Scan(
+		ctx,
+		initialVersion,
+		0, // No limit
+		func(
+			offset EventlogVersion,
+			tm time.Time,
+			payload []byte,
+			next EventlogVersion,
+		) error {
+			ev, err := DecodeEventJSON(payload)
+			if err != nil {
+				return err
+			}
+			switch v := ev.(type) {
+			case EventUserCreated:
+				if err := s.store.ApplyEventUserCreated(
+					ctx, trx, next, tm, v,
+				); err != nil {
+					return err
+				}
+				if err := s.store.UpdateProjectionVersion(
+					ctx, trx, next,
+				); err != nil {
+					return err
+				}
+				appliedVersion = next
+			}
+			latestVersion = next
+			return nil
+		},
+	); err != nil {
+		if s.eventlog.IsOffsetOutOfBoundErr(err) {
+			return latestVersion, nil
+		}
+		return "", err
+	}
+	return latestVersion, nil
+}
+
+func (s *ServiceUsers) CreateUser(
+	ctx context.Context,
+	input srcticketsserviceusersio.CreateUserIn,
+) (
+	output srcticketsserviceusersio.CreateUserOut,
+	events []Event,
+	eventsPushTime time.Time,
+	err error,
+) {
+	txn := s.store.NewTransactionReadWriter()
+	defer func() {
+		if err == nil ||
+			errors.Is(err, context.Canceled) ||
+			errors.Is(err, context.DeadlineExceeded) {
+			txn.Commit()
+		} else {
+			txn.Rollback()
+		}
+	}()
+
+	var outZero srcticketsserviceusersio.CreateUserOut
+	var eventsJSON []byte
+
+	defer func() {
+		if err != nil {
+			output = outZero
+			events = nil
+			eventsJSON = nil
+			eventsPushTime = time.Time{}
+		}
+	}()
+
+	exec := func() (ok bool) {
+		output, events, err = s.methods.CreateUser(ctx, txn, input)
+		if err != nil {
+			return false
+		}
+		for i, e := range events {
+			if err = CheckEventType(e); err != nil {
+				err = fmt.Errorf("checking returned event (%d): %w", i, err)
+				return false
+			}
+			switch e.(type) {
+			case EventUserCreated:
+			default:
+				panic(fmt.Errorf(
+					"method Users.CreateUser is not allowed to emit event %s",
+					reflect.TypeOf(e),
+				))
+			}
+		}
+		if eventsJSON, err = EncodeEventJSON(events...); err != nil {
+			return false
+		}
+		return true
+	}
+
+	var currentVersion EventlogVersion
+	currentVersion, err = s.projectionVersion(ctx, txn)
+	if err != nil {
+		return
+	}
+
+	_, _, eventsPushTime, err = s.eventlog.TryAppendJSON(
+		ctx,
+		currentVersion,
+		func() ([]byte, error) {
+			if !exec() {
+				return nil, err
+			}
+			return eventsJSON, nil
+		},
+		func() (EventlogVersion, error) { return s.sync(ctx, txn) },
+	)
+
+	if err != nil {
+		return
+	}
+	if s.options.SyncAfterPush == Enabled && len(events) > 0 {
+		_, err = s.sync(ctx, txn)
+	}
+
+	return
+}
+
+func (s *ServiceUsers) GetUserByID(
+	ctx context.Context,
+	input srcticketsid.User,
+) (
+	output srcticketsserviceusersio.GetUserByIDOut,
+	// No events
+	err error,
+) {
+	txn := s.store.NewTransactionReader()
+	defer txn.Complete()
+
+	var outZero srcticketsserviceusersio.GetUserByIDOut
+
+	defer func() {
+		if err != nil {
+			output = outZero
+			// No events to reset
+		}
+	}()
+
+	exec := func() (ok bool) {
+		output, err = s.methods.GetUserByID(ctx, txn, input)
+		if err != nil {
+			return false
+		}
+
+		return true
+	}
+
+	exec()
 
 	return
 }

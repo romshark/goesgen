@@ -24,6 +24,11 @@ func (s *Service) CreateComment(
 		return
 	}
 
+	if _, ok := tx.(transaction).store.state.users[client]; !ok {
+		err = fmt.Errorf("user %s not found", client)
+		return
+	}
+
 	if _, ok := tx.(transaction).store.state.tickets[in.Ticket]; !ok {
 		err = fmt.Errorf("ticket %s not found", in.Ticket)
 		return

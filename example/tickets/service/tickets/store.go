@@ -10,10 +10,16 @@ import (
 	"time"
 )
 
+type user struct {
+	ID         id.User
+	AssignedTo map[*ticket]struct{}
+	AuthorOf   map[*ticket]struct{}
+}
+
 type ticketComment struct {
 	Ticket  *ticket
 	Message tickets.TicketCommentMessage
-	Author  id.User
+	Author  *user
 }
 
 type ticket struct {
@@ -21,35 +27,20 @@ type ticket struct {
 	ID          id.Ticket
 	Title       tickets.TicketTitle
 	Description tickets.TicketDescription
-	Author      id.User
+	Author      *user
 	Comments    []ticketComment
-	Assignees   map[id.User]struct{}
-}
-
-func (t *ticket) Clone() *ticket {
-	c := *t
-	c.Comments = make([]ticketComment, len(c.Comments))
-	for i, v := range t.Comments {
-		c.Comments[i] = ticketComment{
-			Ticket:  &c,
-			Message: v.Message,
-			Author:  v.Author,
-		}
-	}
-	c.Assignees = make(map[id.User]struct{}, len(t.Assignees))
-	for k := range t.Assignees {
-		c.Assignees[k] = struct{}{}
-	}
-	return &c
+	Assignees   map[*user]struct{}
 }
 
 type StoreState struct {
 	tickets map[id.Ticket]*ticket
+	users   map[id.User]*user
 }
 
 func NewStoreState() *StoreState {
 	return &StoreState{
 		tickets: make(map[id.Ticket]*ticket),
+		users:   make(map[id.User]*user),
 	}
 }
 
@@ -57,10 +48,55 @@ func NewStoreState() *StoreState {
 func (s *StoreState) Clone() *StoreState {
 	t := make(map[id.Ticket]*ticket, len(s.tickets))
 	for k, v := range s.tickets {
-		t[k] = v.Clone()
+		c := *v
+		c.Comments = make([]ticketComment, len(c.Comments))
+		for i, v := range v.Comments {
+			c.Comments[i] = ticketComment{
+				Ticket:  &c,
+				Message: v.Message,
+			}
+		}
+		t[k] = &c
 	}
+
+	u := make(map[id.User]*user, len(s.users))
+	for k, v := range s.users {
+		userCopy := &user{
+			ID:         v.ID,
+			AssignedTo: make(map[*ticket]struct{}, len(v.AssignedTo)),
+			AuthorOf:   make(map[*ticket]struct{}, len(v.AuthorOf)),
+		}
+
+		// Re-link tickets assigned to
+		for k := range v.AssignedTo {
+			userCopy.AssignedTo[t[k.ID]] = struct{}{}
+		}
+
+		// Re-link tickets author of
+		for k := range v.AuthorOf {
+			userCopy.AuthorOf[t[k.ID]] = struct{}{}
+		}
+
+		u[k] = userCopy
+	}
+
+	for _, v := range t {
+		// Re-link assignees
+		a := make(map[*user]struct{}, len(v.Assignees))
+		for k := range v.Assignees {
+			a[u[k.ID]] = struct{}{}
+		}
+		v.Assignees = a
+
+		// Re-link comment authors
+		for _, v := range v.Comments {
+			v.Author = u[v.Author.ID]
+		}
+	}
+
 	return &StoreState{
 		tickets: t,
+		users:   u,
 	}
 }
 
@@ -72,7 +108,8 @@ type Store struct {
 
 func NewStore() *Store {
 	return &Store{
-		state: NewStoreState(),
+		state:             NewStoreState(),
+		projectionVersion: "0",
 	}
 }
 
@@ -119,9 +156,15 @@ func (s *Store) ProjectionVersion(
 	return s.projectionVersion, nil
 }
 
-// ApplyEventTicketClosed applies event TicketClosed to the projection.
-// The projection must update its local projection version
-// to the one that is provided.
+func (s *Store) UpdateProjectionVersion(
+	ctx context.Context,
+	tx generated.TransactionWriter,
+	v generated.EventlogVersion,
+) error {
+	s.projectionVersion = v
+	return nil
+}
+
 func (s *Store) ApplyEventTicketClosed(
 	ctx context.Context,
 	tx generated.TransactionWriter,
@@ -131,13 +174,9 @@ func (s *Store) ApplyEventTicketClosed(
 ) error {
 	log.Printf("ApplyEventTicketClosed: (%s) %#v", tm, e)
 	s.state.tickets[e.Ticket].State = generated.ProjectionTicketStateClosed
-	s.projectionVersion = v
 	return nil
 }
 
-// ApplyEventTicketCommented applies event TicketCommented to the projection.
-// The projection must update its local projection version
-// to the one that is provided.
 func (s *Store) ApplyEventTicketCommented(
 	ctx context.Context,
 	tx generated.TransactionWriter,
@@ -150,15 +189,11 @@ func (s *Store) ApplyEventTicketCommented(
 	t.Comments = append(t.Comments, ticketComment{
 		Ticket:  t,
 		Message: e.Message,
-		Author:  e.By,
+		Author:  s.state.users[e.By],
 	})
-	s.projectionVersion = v
 	return nil
 }
 
-// ApplyEventTicketCreated applies event TicketCreated to the projection.
-// The projection must update its local projection version
-// to the one that is provided.
 func (s *Store) ApplyEventTicketCreated(
 	ctx context.Context,
 	tx generated.TransactionWriter,
@@ -172,17 +207,13 @@ func (s *Store) ApplyEventTicketCreated(
 		ID:          e.Id,
 		Title:       e.Title,
 		Description: e.Description,
-		Author:      e.Author,
+		Author:      s.state.users[e.Author],
 		Comments:    nil,
-		Assignees:   map[id.User]struct{}{},
+		Assignees:   map[*user]struct{}{},
 	}
-	s.projectionVersion = v
 	return nil
 }
 
-// ApplyEventTicketDescriptionChanged applies event TicketDescriptionChanged to the projection.
-// The projection must update its local projection version
-// to the one that is provided.
 func (s *Store) ApplyEventTicketDescriptionChanged(
 	ctx context.Context,
 	tx generated.TransactionWriter,
@@ -192,13 +223,9 @@ func (s *Store) ApplyEventTicketDescriptionChanged(
 ) error {
 	log.Printf("ApplyEventTicketDescriptionChanged: (%s) %#v", tm, e)
 	s.state.tickets[e.Ticket].Description = e.NewDescription
-	s.projectionVersion = v
 	return nil
 }
 
-// ApplyEventTicketTitleChanged applies event TicketTitleChanged to the projection.
-// The projection must update its local projection version
-// to the one that is provided.
 func (s *Store) ApplyEventTicketTitleChanged(
 	ctx context.Context,
 	tx generated.TransactionWriter,
@@ -208,13 +235,9 @@ func (s *Store) ApplyEventTicketTitleChanged(
 ) error {
 	log.Printf("ApplyEventTicketTitleChanged: (%s) %#v", tm, e)
 	s.state.tickets[e.Ticket].Title = e.NewTitle
-	s.projectionVersion = v
 	return nil
 }
 
-// ApplyEventUserAssignedToTicket applies event UserAssignedToTicket to the projection.
-// The projection must update its local projection version
-// to the one that is provided.
 func (s *Store) ApplyEventUserAssignedToTicket(
 	ctx context.Context,
 	tx generated.TransactionWriter,
@@ -223,14 +246,12 @@ func (s *Store) ApplyEventUserAssignedToTicket(
 	e generated.EventUserAssignedToTicket,
 ) error {
 	log.Printf("ApplyEventUserAssignedToTicket: (%s) %#v", tm, e)
-	s.state.tickets[e.Ticket].Assignees[e.User] = struct{}{}
-	s.projectionVersion = v
+	u := s.state.users[e.User]
+	t := s.state.tickets[e.Ticket]
+	t.Assignees[u] = struct{}{}
 	return nil
 }
 
-// ApplyEventUserUnassignedFromTicket applies event UserUnassignedFromTicket to the projection.
-// The projection must update its local projection version
-// to the one that is provided.
 func (s *Store) ApplyEventUserUnassignedFromTicket(
 	ctx context.Context,
 	tx generated.TransactionWriter,
@@ -239,7 +260,22 @@ func (s *Store) ApplyEventUserUnassignedFromTicket(
 	e generated.EventUserUnassignedFromTicket,
 ) error {
 	log.Printf("ApplyEventUserUnassignedFromTicket: (%s) %#v", tm, e)
-	delete(s.state.tickets[e.Ticket].Assignees, e.User)
-	s.projectionVersion = v
+	delete(s.state.tickets[e.Ticket].Assignees, s.state.users[e.User])
+	return nil
+}
+
+func (s *Store) ApplyEventUserCreated(
+	ctx context.Context,
+	tx generated.TransactionWriter,
+	v generated.EventlogVersion,
+	tm time.Time,
+	e generated.EventUserCreated,
+) error {
+	log.Printf("ApplyEventUserCreated: (%s) %#v", tm, e)
+	s.state.users[e.Id] = &user{
+		ID:         e.Id,
+		AssignedTo: map[*ticket]struct{}{},
+		AuthorOf:   map[*ticket]struct{}{},
+	}
 	return nil
 }

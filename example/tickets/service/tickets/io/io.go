@@ -16,7 +16,6 @@ type (
 	CreateTicketIn struct {
 		Title       tickets.TicketTitle
 		Description tickets.TicketDescription
-		Author      id.User
 	}
 	CreateTicketOut struct {
 		ID          id.Ticket

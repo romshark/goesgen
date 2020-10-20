@@ -24,9 +24,9 @@ func (s *Service) GetTicketByID(
 
 	output.Assignees = make([]id.User, 0, len(t.Assignees))
 	for u := range t.Assignees {
-		output.Assignees = append(output.Assignees, u)
+		output.Assignees = append(output.Assignees, u.ID)
 	}
-	output.Author = t.Author
+	output.Author = t.Author.ID
 	output.Description = t.Description
 	output.Title = t.Title
 	output.ID = t.ID

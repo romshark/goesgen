@@ -18,6 +18,10 @@ func (s *Service) CloseTicket(
 		return nil, err
 	}
 
+	if _, ok := tx.(transaction).store.state.users[client]; !ok {
+		return nil, fmt.Errorf("user %s not found", client)
+	}
+
 	t, ok := tx.(transaction).store.state.tickets[in.Ticket]
 	if !ok {
 		return nil, fmt.Errorf("ticket %s not found", in.Ticket)

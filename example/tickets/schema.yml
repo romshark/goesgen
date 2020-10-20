@@ -28,8 +28,16 @@ events:
     ticket: id.Ticket
     newTitle: TicketTitle
     by: id.User
+  UserCreated:
+    id: id.User
+    name: UserName
 
 projections:
+  User:
+    states:
+      - New
+    createOn: UserCreated
+
   Ticket:
     states:
       - New
@@ -63,9 +71,23 @@ projections:
         - Stalled -> Stalled
 
 services:
+  Users:
+    projections:
+      - User
+    methods:
+      GetUserByID:
+        in: id.User
+        out: service.users.io.GetUserByIDOut
+      CreateUser:
+        in: service.users.io.CreateUserIn
+        out: service.users.io.CreateUserOut
+        emits:
+          - UserCreated
+
   Tickets:
     projections:
       - Ticket
+      - User
     methods:
       GetTicketByID:
         in: id.Ticket

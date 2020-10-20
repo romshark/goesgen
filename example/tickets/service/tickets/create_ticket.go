@@ -24,6 +24,11 @@ func (s *Service) CreateTicket(
 		return
 	}
 
+	if _, ok := tx.(transaction).store.state.users[client]; !ok {
+		err = fmt.Errorf("user %s not found", client)
+		return
+	}
+
 	if err = tickets.ValidateTicketTitle(in.Title); err != nil {
 		err = fmt.Errorf("invalid ticket title: %w", err)
 		return
