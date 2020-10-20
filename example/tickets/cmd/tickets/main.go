@@ -92,7 +92,7 @@ func main() {
 	log.Printf("Ticket created (%s): %#v", tm, newTicket)
 
 	{ // Assign user B to ticket
-		_, tm, err = serviceTickets.AssignUserToTicket(
+		_, _, err = serviceTickets.AssignUserToTicket(
 			ctxAsUserA,
 			io.AssignUserToTicketIn{
 				User:   userB.ID,
