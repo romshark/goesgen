@@ -45,7 +45,7 @@ func main() {
 	)
 
 	// Create user A
-	userA, _, tm, err := serviceUsers.CreateUser(
+	userA, _, _, err := serviceUsers.CreateUser(
 		context.Background(),
 		usersio.CreateUserIn{
 			Name: "User A",
@@ -57,7 +57,7 @@ func main() {
 	log.Printf("Created user %q: %s", userA.Name, userA.ID)
 
 	// Create user B
-	userB, _, tm, err := serviceUsers.CreateUser(
+	userB, _, _, err := serviceUsers.CreateUser(
 		context.Background(),
 		usersio.CreateUserIn{
 			Name: "User B",
