@@ -125,7 +125,8 @@ type {{$srvType}}StoreHandler interface {
 		TransactionReader,
 	) (EventlogVersion, error)
 
-	// UpdateProjectionVersion explicitly sets the version of the store
+	// UpdateProjectionVersion explicitly sets the
+	// projection version of the store
 	UpdateProjectionVersion(
 		context.Context,
 		TransactionWriter,
@@ -134,8 +135,8 @@ type {{$srvType}}StoreHandler interface {
 	
 	{{range $e := $s.Subscriptions}}
 	// Apply{{$.EventType $e.Name}} applies event {{$e.Name}} to the projection.
-	// The projection must update its local projection version
-	// to the one that is provided.
+	// The given projection version doesn't need to be applied,
+	// it will be applied in a separate call to UpdateProjectionVersion.
 	Apply{{$.EventType $e.Name}} (
 		context.Context,
 		TransactionWriter,
