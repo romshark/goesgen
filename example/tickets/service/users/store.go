@@ -46,7 +46,7 @@ func NewInmemSQLStore() (*Store, error) {
 	}
 
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commiting transaction: %w", err)
+		return nil, fmt.Errorf("committing transaction: %w", err)
 	}
 
 	return &Store{
@@ -58,7 +58,7 @@ type transaction struct{ tx *sql.Tx }
 
 func (t transaction) Commit() {
 	if err := t.tx.Commit(); err != nil {
-		log.Printf("commiting transaction %p: %s", t.tx, err)
+		log.Printf("committing transaction %p: %s", t.tx, err)
 	}
 }
 
@@ -73,7 +73,7 @@ type transactionRead struct{ tx *sql.Tx }
 func (t transactionRead) Complete() {
 	if err := t.tx.Commit(); err != nil {
 		log.Printf(
-			"commiting read-only transaction %p: %s",
+			"committing read-only transaction %p: %s",
 			t.tx, err,
 		)
 	}
