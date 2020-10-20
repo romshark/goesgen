@@ -3,6 +3,29 @@ package gen
 const TmplServices = `{{define "services"}}
 /* SERVICES */
 
+type ServiceOptions struct {
+	// SyncAfterPush will synchronize a service against the event log
+	// after a successful push of events.
+	//
+	// SyncAfterPush is enabled by default.
+	SyncAfterPush Option
+}
+
+type Option int
+
+const (
+	Unspecified Option = 0
+	Disabled Option = -1
+	Enabled Option = 1
+)
+
+// SetDefaults sets default values to unspecified options
+func (o *ServiceOptions) SetDefaults() {
+	if o.SyncAfterPush == Unspecified {
+		o.SyncAfterPush = Enabled
+	}
+}
+
 type EventlogVersion = string
 
 // EventLogger represents an abstract event logger
@@ -100,6 +123,7 @@ type {{$srvType}} struct {
 	logErr   Logger
 	methods  {{$srvType}}MethodCaller
 	store    {{$srvType}}StoreHandler
+	options  ServiceOptions
 }
 
 // {{$srvType}}StoreHandler represents a store handler implementation
@@ -190,6 +214,7 @@ func New{{$srvType}}(
 	storeHandler {{$srvType}}StoreHandler,
 	eventLogger EventLogger,
 	errorLogger Logger,
+	options ServiceOptions,
 ) *{{$srvType}} {
 	if methodCaller == nil {
 		panic("methodCaller is nil in New{{$srvType}}")
@@ -203,11 +228,13 @@ func New{{$srvType}}(
 	if errorLogger == nil {
 		errorLogger = defaultLogErr
 	}
+	options.SetDefaults()
 	return &{{$srvType}}{
 		methods:  methodCaller,
 		store:    storeHandler,
 		eventlog: eventLogger,
 		logErr:   errorLogger,
+		options:  options,
 	}
 }
 
@@ -467,6 +494,15 @@ func (s *{{$srvType}}) {{$mn}}(
 	)
 	{{- else}}
 	exec()
+	{{- end}}
+
+	{{if or (eq $m.Type "transaction") (eq $m.Type "append") -}}
+	if err != nil {
+		return
+	}
+	if s.options.SyncAfterPush == Enabled && len(events) > 0 {
+		_, err = s.sync(ctx, txn)
+	}
 	{{- end}}
 
 	return
