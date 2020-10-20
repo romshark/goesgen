@@ -124,6 +124,13 @@ type {{$srvType}}StoreHandler interface {
 		context.Context,
 		TransactionReader,
 	) (EventlogVersion, error)
+
+	// UpdateProjectionVersion explicitly sets the version of the store
+	UpdateProjectionVersion(
+		context.Context,
+		TransactionWriter,
+		EventlogVersion,
+	) error
 	
 	{{range $e := $s.Subscriptions}}
 	// Apply{{$.EventType $e.Name}} applies event {{$e.Name}} to the projection.
@@ -276,6 +283,17 @@ func (s *{{$srvType}}) sync(
 		return "", err
 	}
 
+	var appliedVersion EventlogVersion
+	defer func() {
+		if appliedVersion == latestVersion {
+			return
+		}
+		err = s.store.UpdateProjectionVersion(ctx, trx, latestVersion)
+		if err != nil {
+			latestVersion = appliedVersion
+		}
+	}()
+
 	if err := s.eventlog.Scan(
 		ctx,
 		initialVersion,
@@ -297,9 +315,15 @@ func (s *{{$srvType}}) sync(
 				); err != nil {
 					return err
 				}
-				latestVersion = next
+				if err := s.store.UpdateProjectionVersion(
+					ctx, trx, next,
+				); err != nil {
+					return err
+				}
+				appliedVersion = next
 			{{end -}}
 			}
+			latestVersion = next
 			return nil
 		},
 	); err != nil {
