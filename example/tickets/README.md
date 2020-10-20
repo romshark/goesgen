@@ -1,6 +1,6 @@
 # [goesgen](github.com/romshark/goesgen) example Tickets
 
-This example demonstrates the use of [goesgen](github.com/romshark/goesgen). It models a simple JIRA-like ticket system in an event-oriented & event-sourced way.
+This example demonstrates the use of [goesgen](github.com/romshark/goesgen). It models a simple [JIRA](https://www.atlassian.com/software/jira)-like ticket system in an event-oriented & event-sourced way.
 [romshark/eventlog](http://github.com/romshark/eventlog) is used as the primary persistent event log implementation.
 The following architectural paradigms are applied:
 - [Command Query Responsibility Segregation (CQRS)](https://martinfowler.com/bliki/CQRS.html)
