@@ -6,6 +6,8 @@ This example demonstrates the use of [goesgen](github.com/romshark/goesgen). It 
 - [Microservices](https://en.wikipedia.org/wiki/Microservices)
 - Transactions and [strong consistency guarantees](https://en.wikipedia.org/wiki/Strong_consistency) through [Optimistic Concurrency Control](https://en.wikipedia.org/wiki/Optimistic_concurrency_control)
 
+![Event Sourcing Visualization](https://github.com/romshark/goesgen/blob/c0818a0b2b0499049fad36aaa0fb7342be4292c7/example/tickets/eventsourcing.png)
+
 Responsibilities are split up into 2 separate services:
 - [**Users**](https://github.com/romshark/goesgen/tree/1.0.0/example/tickets/service/users) is responsible for creating new users. It uses an in-memory [SQLite 3](https://www.sqlite.org/index.html) database for integration SQL demonstration purposes.
 - [**Tickets**](https://github.com/romshark/goesgen/tree/1.0.0/example/tickets/service/tickets) is responsible for managing tickets (creating tickets, assigning & unassigning users, closing tickets, updating tickets). It uses an in-memory data structure as a volatile store.
