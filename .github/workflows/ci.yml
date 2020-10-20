@@ -44,7 +44,7 @@ jobs:
 
     # Overalls
     - name: overalls
-      run: $(go env GOPATH)/bin/overalls -project /home/runner/work/goesgen/goesgen -covermode atomic -debug -- -race -v -coverpkg ./...
+      run: $(go env GOPATH)/bin/overalls -project /home/runner/work/goesgen/goesgen/gen -covermode atomic -debug -- -race -v -coverpkg ./...
 
     # Install goveralls
     - name: Install goveralls
