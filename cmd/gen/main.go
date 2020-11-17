@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"text/template"
 
 	"github.com/romshark/goesgen/gen"
 )
@@ -33,6 +34,11 @@ func main() {
 		false,
 		"disable projections generation",
 	)
+	flagUserTemplatesPath := flag.String(
+		"templates",
+		"",
+		"path to user templates",
+	)
 	flag.Parse()
 
 	s, err := gen.Parse(*flagSourcePackagePath, *flagSchemaPath)
@@ -40,9 +46,18 @@ func main() {
 		log.Fatalf("parsing schema/source: %s", err)
 	}
 
+	var t *template.Template
+	if flagUserTemplatesPath != nil {
+		t, err = template.ParseGlob(*flagUserTemplatesPath)
+		if err != nil {
+			log.Fatalf("parsing user templates: %s", err)
+		}
+	}
+
 	outPackagePath, err := gen.NewGenerator().Generate(
 		s, *flagOutputPath, gen.GeneratorOptions{
 			PackageName:        *flagPackageName,
+			TemplateTree:       t,
 			ExcludeProjections: *flagExcludeProjections,
 		},
 	)

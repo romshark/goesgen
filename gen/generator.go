@@ -15,13 +15,27 @@ type Generator struct {
 }
 
 func NewGenerator() *Generator {
-	t := template.Must(template.New("generated").Parse(TmplGenerated))
-	template.Must(t.Parse(TmplEvents))
-	template.Must(t.Parse(TmplEventCodec))
-	template.Must(t.Parse(TmplProjections))
-	template.Must(t.Parse(TmplServices))
-	return &Generator{
-		tmpl: t,
+	return &Generator{}
+}
+
+var builtinTemplates = map[string]string{
+	"generated":   TmplGenerated,
+	"events":      TmplEvents,
+	"event_codec": TmplEventCodec,
+	"projections": TmplProjections,
+	"services":    TmplServices,
+}
+
+func (g *Generator) parseTemplates(t *template.Template) {
+	g.tmpl = t
+	for name, tmpl := range builtinTemplates {
+		if g.tmpl == nil {
+			g.tmpl = template.Must(template.New("generated").Parse(TmplGenerated))
+		}
+		// not defined by user -> use builtin
+		if g.tmpl.Lookup(name) == nil {
+			template.Must(g.tmpl.Parse(tmpl))
+		}
 	}
 }
 
@@ -30,6 +44,7 @@ func (g *Generator) Generate(
 	outputPath string,
 	options GeneratorOptions,
 ) (outPackagePath string, err error) {
+	g.parseTemplates(options.TemplateTree)
 	if err := options.Prepare(); err != nil {
 		return "", fmt.Errorf("preparing options: %w", err)
 	}
@@ -55,6 +70,7 @@ func (g *Generator) Generate(
 type GeneratorOptions struct {
 	PackageName        string
 	ExcludeProjections bool
+	TemplateTree       *template.Template
 }
 
 // Prepare validates the options and sets defaults for undefined values
