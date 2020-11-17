@@ -1,11 +1,12 @@
 package gen_test
 
 import (
-	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
+	"text/template"
 
 	"github.com/romshark/goesgen/gen"
 
@@ -42,6 +43,66 @@ func TestGeneratorOptionsPrepareErrPackageName(t *testing.T) {
 	}
 }
 
+func GoTool(dir string, args ...string) (string, string, error) {
+	gotool := "go"
+	if v, ok := os.LookupEnv("GOBIN"); ok {
+		gotool = v
+	}
+
+	cmd := exec.Command(gotool, args...)
+	var stdOut strings.Builder
+	var errOut strings.Builder
+	cmd.Stdout = &stdOut
+	cmd.Stderr = &errOut
+	cmd.Dir = dir
+
+	err := cmd.Run()
+	return stdOut.String(), errOut.String(), err
+}
+
+func TestUserTemplates(t *testing.T) {
+	r := require.New(t)
+
+	root, files := Setup(t, ValidSetup)
+
+	schema, err := gen.Parse(root, files["schema.yaml"])
+	r.NoError(err)
+
+	g := gen.NewGenerator()
+	r.NotNil(g)
+
+	tmpl := template.Must(template.New("generated").Parse(`
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("Hello, goesgen!")
+}
+`))
+	template.Must(tmpl.Parse(`{{ define "events" }}{{ end -}}`))
+	template.Must(tmpl.Parse(`{{ define "event_codec" }}{{ end -}}`))
+	template.Must(tmpl.Parse(`{{ define "projections" }}{{ end -}}`))
+	template.Must(tmpl.Parse(`{{ define "services" }}{{ end -}}`))
+
+	outPkgPath, err := g.Generate(
+		schema,
+		root,
+		gen.GeneratorOptions{
+			PackageName:        "gencustomname",
+			ExcludeProjections: false,
+			TemplateTree:       tmpl,
+		},
+	)
+	r.NoError(err)
+	r.Equal(filepath.Join(root, "gencustomname"), outPkgPath)
+
+	// Compile generated sources
+	stdout, stderr, err := GoTool(root, "run", "./gencustomname")
+	r.NoError(err, stderr)
+	r.Equal("Hello, goesgen!", strings.TrimSpace(stdout))
+}
+
 func TestGenerate(t *testing.T) {
 	r := require.New(t)
 
@@ -76,11 +137,8 @@ func TestGenerate(t *testing.T) {
 	)
 
 	// Compile generated sources
-	cmd := exec.Command("go", "build")
-	var errOut bytes.Buffer
-	cmd.Stderr = &errOut
-	cmd.Dir = root
-	r.NoError(cmd.Run(), errOut.String())
+	_, stderr, err := GoTool(root, "build")
+	r.NoError(err, stderr)
 }
 
 func AssumeFilesExist(t *testing.T, root string, expected ...string) {
