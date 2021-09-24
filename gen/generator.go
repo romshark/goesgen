@@ -2,6 +2,7 @@ package gen
 
 import (
 	"bytes"
+	_ "embed"
 	"fmt"
 	"go/format"
 	"os"
@@ -14,12 +15,27 @@ type Generator struct {
 	tmpl *template.Template
 }
 
+//go:embed tmpl_generated.gtpl
+var tmplGenerated string
+
+//go:embed tmpl_events.gtpl
+var tmplEvents string
+
+//go:embed tmpl_event_codec.gtpl
+var tmplEventCodec string
+
+//go:embed tmpl_projections.gtpl
+var tmplProjections string
+
+//go:embed tmpl_services.gtpl
+var tmplServices string
+
 func NewGenerator() *Generator {
-	t := template.Must(template.New("generated").Parse(TmplGenerated))
-	template.Must(t.Parse(TmplEvents))
-	template.Must(t.Parse(TmplEventCodec))
-	template.Must(t.Parse(TmplProjections))
-	template.Must(t.Parse(TmplServices))
+	t := template.Must(template.New("generated").Parse(tmplGenerated))
+	template.Must(t.Parse(tmplEvents))
+	template.Must(t.Parse(tmplEventCodec))
+	template.Must(t.Parse(tmplProjections))
+	template.Must(t.Parse(tmplServices))
 	return &Generator{
 		tmpl: t,
 	}
@@ -92,7 +108,7 @@ func writeGoFile(
 
 	f, err := os.OpenFile(
 		filePath,
-		os.O_CREATE|os.O_WRONLY|os.O_SYNC,
+		os.O_CREATE|os.O_TRUNC|os.O_WRONLY|os.O_SYNC,
 		0644,
 	)
 	if err != nil {

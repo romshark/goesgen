@@ -1,6 +1,4 @@
-package gen
-
-const TmplProjections = `{{define "projections"}}
+{{define "projections"}}
 /* PROJECTIONS */
 
 {{range $n, $p := $.Schema.Projections}}
@@ -32,4 +30,3 @@ func (p {{$projType}}) State() {{$projType}}State {
 {{end}}
 
 {{end}}
-`

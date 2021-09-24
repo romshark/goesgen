@@ -1,6 +1,4 @@
-package gen
-
-const TmplServices = `{{define "services"}}
+{{define "services"}}
 /* SERVICES */
 
 type ServiceOptions struct {
@@ -513,4 +511,3 @@ func (s *{{$srvType}}) {{$mn}}(
 {{end}}
 
 {{end}}
-`

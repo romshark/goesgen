@@ -1,6 +1,4 @@
-package gen
-
-const TmplEvents = `{{define "events"}}
+{{define "events"}}
 /* EVENT TYPES */
 
 // Event represents either of:
@@ -43,4 +41,3 @@ func CheckEventType(e Event) error {
 }
 
 {{end}}
-`

@@ -567,12 +567,12 @@ type TransactionReader = interface{}
 // ServiceTickets projects the following entities:
 //  Ticket//  User
 // therefore, Tickets subscribes to the following events:
-//  TicketDescriptionChanged
 //  TicketTitleChanged
 //  TicketClosed
 //  TicketCommented
 //  UserAssignedToTicket
 //  UserUnassignedFromTicket
+//  TicketDescriptionChanged
 type ServiceTickets struct {
 	eventlog EventLogger
 	logErr   Logger

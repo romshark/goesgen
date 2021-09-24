@@ -1,6 +1,4 @@
-package gen
-
-const TmplEventCodec = `{{define "event_codec"}}
+{{define "event_codec"}}
 /* EVENT CODEC */
 
 // EncodeEventJSON encodes one or multiple events to UTF-8 text.
@@ -76,4 +74,3 @@ type UnknownEventTypeErr string
 func (e UnknownEventTypeErr) Error() string { return string(e) }
 
 {{end}}
-`
