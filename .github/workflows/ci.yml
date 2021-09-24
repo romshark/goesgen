@@ -9,10 +9,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     # Prepare
-    - name: Install Go 1.15
+    - name: Install Go
       uses: actions/setup-go@v2
       with:
-        go-version: 1.15
+        go-version: 1.17
     - name: Checkout repository
       uses: actions/checkout@v2
 
@@ -64,7 +64,7 @@ jobs:
 
     # Install golangci-lint
     - name: Install golangci-lint
-      run: curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.31.0
+      run: curl -sfL https://install.goreleaser.com/github.com/golangci/golangci-lint.sh | sh -s -- -b $(go env GOPATH)/bin v1.42.1
 
     # go vet
     - name: go vet
